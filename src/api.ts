@@ -27,7 +27,7 @@ export function fetchPublications(
     q: `a ${bai}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'authors,titles,author_count',
+    fields: 'author_count,authors.recid,authors.full_name,authors.ids',
   });
   return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
 }

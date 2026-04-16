@@ -82,47 +82,55 @@ export class NetworkBuilder {
         this.graphState.endBatch();
       }
 
-      // Phase 3: Fetch co-author publications for cross-links
+      // Phase 3: Fetch co-author publications for cross-links (parallel)
       const coauthorIds = Array.from(coauthorBais.entries());
       const total = coauthorIds.length;
+      let completed = 0;
 
-      for (let i = 0; i < coauthorIds.length; i++) {
-        if (signal.aborted) return;
+      onProgress({
+        phase: 'fetching-coauthors',
+        totalCoauthors: total,
+        completedCoauthors: 0,
+        message: `Fetching co-author connections... 0/${total}`,
+      });
 
-        const [coauthorId, coauthorBai] = coauthorIds[i];
+      await Promise.allSettled(
+        coauthorIds.map(async ([coauthorId, coauthorBai]) => {
+          if (signal.aborted) return;
 
-        onProgress({
-          phase: 'fetching-coauthors',
-          totalCoauthors: total,
-          completedCoauthors: i,
-          message: `Fetching co-author connections... ${i + 1}/${total}`,
-        });
+          try {
+            const coauthorPubs = await this.fetchAllPublications(coauthorBai, signal);
 
-        try {
-          const coauthorPubs = await this.fetchAllPublications(coauthorBai, signal);
+            this.graphState.beginBatch();
 
-          this.graphState.beginBatch();
+            for (const pub of coauthorPubs) {
+              if (pub.metadata.author_count > MAX_COAUTHOR_COUNT) continue;
 
-          for (const pub of coauthorPubs) {
-            if (pub.metadata.author_count > MAX_COAUTHOR_COUNT) continue;
+              for (const author of pub.metadata.authors) {
+                if (!author.recid) continue;
+                const otherId = String(author.recid);
 
-            for (const author of pub.metadata.authors) {
-              if (!author.recid) continue;
-              const otherId = String(author.recid);
-
-              // Only add edges between existing nodes (not the co-author itself)
-              if (otherId !== coauthorId && this.graphState.hasNode(otherId)) {
-                this.graphState.addOrUpdateEdge(coauthorId, otherId, pub.id);
+                if (otherId !== coauthorId && this.graphState.hasNode(otherId)) {
+                  this.graphState.addOrUpdateEdge(coauthorId, otherId, pub.id);
+                }
               }
             }
+
+            this.graphState.endBatch();
+          } catch (err) {
+            if ((err as Error).name === 'AbortError') return;
+            console.warn(`Failed to fetch publications for ${coauthorBai}:`, err);
           }
 
-          this.graphState.endBatch();
-        } catch (err) {
-          if ((err as Error).name === 'AbortError') return;
-          console.warn(`Failed to fetch publications for ${coauthorBai}:`, err);
-        }
-      }
+          completed++;
+          onProgress({
+            phase: 'fetching-coauthors',
+            totalCoauthors: total,
+            completedCoauthors: completed,
+            message: `Fetching co-author connections... ${completed}/${total}`,
+          });
+        }),
+      );
 
       onProgress({
         phase: 'done',
