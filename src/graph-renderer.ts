@@ -17,14 +17,25 @@ export class GraphRenderer {
     private container: HTMLElement,
     private graphState: GraphState,
   ) {
-    this.width = container.clientWidth;
-    this.height = container.clientHeight;
+    const rect = container.getBoundingClientRect();
+    this.width = rect.width;
+    this.height = rect.height;
 
     this.svg = d3
       .select(container)
       .append('svg')
       .attr('width', this.width)
       .attr('height', this.height);
+
+    // If the container has no dimensions yet (e.g. hidden at startup), correct
+    // as soon as it becomes visible for the first time.
+    if (this.width === 0 || this.height === 0) {
+      const ro = new ResizeObserver(() => {
+        ro.disconnect();
+        this.onResize();
+      });
+      ro.observe(container);
+    }
 
     this.g = this.svg.append('g');
 
