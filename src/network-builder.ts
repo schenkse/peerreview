@@ -49,9 +49,8 @@ export class NetworkBuilder {
       // Process publications and build initial network
       const coauthorBais = new Map<string, string>(); // recid -> BAI
 
+      this.graphState.beginBatch();
       for (const pub of publications) {
-        this.graphState.beginBatch();
-
         for (const author of pub.metadata.authors) {
           if (!author.recid || author.recid === recid) continue;
 
@@ -76,9 +75,8 @@ export class NetworkBuilder {
           // Add edge between root and co-author
           this.graphState.addOrUpdateEdge(String(recid), authorId, pub.id);
         }
-
-        this.graphState.endBatch();
       }
+      this.graphState.endBatch();
 
       // Phase 3: Fetch co-author publications for cross-links (parallel)
       const coauthorIds = Array.from(coauthorBais.entries());
