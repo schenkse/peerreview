@@ -72,10 +72,8 @@ export class GraphRenderer {
       .force('collide', d3.forceCollide().radius(30))
       .on('tick', () => this.ticked());
 
-    // Subscribe to graph state changes
-    graphState.on('node-added', () => this.updateSimulation());
-    graphState.on('edge-added', () => this.updateSimulation());
-    graphState.on('edge-updated', () => this.updateSimulation());
+    // Subscribe to graph state changes — individual add/update events are
+    // suppressed during batches, so only batch-complete drives DOM updates.
     graphState.on('batch-complete', () => this.updateSimulation());
 
     // Handle window resize
