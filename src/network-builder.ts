@@ -90,6 +90,8 @@ export class NetworkBuilder {
         message: `Fetching co-author connections... 0/${total}`,
       });
 
+      let failures = 0;
+
       await Promise.allSettled(
         coauthorIds.map(async ([coauthorId, coauthorBai]) => {
           if (signal.aborted) return;
@@ -114,6 +116,7 @@ export class NetworkBuilder {
           } catch (err) {
             if ((err as Error).name === 'AbortError') return;
             console.warn(`Failed to fetch publications for ${coauthorBai}:`, err);
+            failures++;
           }
 
           completed++;
@@ -126,11 +129,12 @@ export class NetworkBuilder {
         }),
       );
 
+      const failureNote = failures > 0 ? ` (${failures} co-author${failures === 1 ? '' : 's'} failed to load — cross-links may be incomplete)` : '';
       onProgress({
         phase: 'done',
         totalCoauthors: total,
         completedCoauthors: total,
-        message: `Done. ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections.`,
+        message: `Done. ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections.${failureNote}`,
       });
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
