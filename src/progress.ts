@@ -5,7 +5,10 @@ export class ProgressIndicator {
   private text: HTMLSpanElement;
   private fill: HTMLDivElement;
 
-  constructor(private container: HTMLElement) {
+  constructor(
+    private container: HTMLElement,
+    private hideDelayMs = 5000,
+  ) {
     this.container.className = 'progress-container';
 
     this.text = document.createElement('span');
@@ -42,7 +45,7 @@ export class ProgressIndicator {
         this.fill.style.width = '100%';
         // Auto-hide after a delay on completion
         if (progress.phase === 'done') {
-          setTimeout(() => this.hide(), 3000);
+          setTimeout(() => this.hide(), this.hideDelayMs);
         }
       }
     }
