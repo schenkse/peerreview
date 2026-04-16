@@ -12,6 +12,7 @@ export class GraphRenderer {
   private simulation: d3.Simulation<AuthorNode, CoauthorEdge>;
   private width: number;
   private height: number;
+  private resizeAbort = new AbortController();
 
   constructor(
     private container: HTMLElement,
@@ -77,7 +78,12 @@ export class GraphRenderer {
     graphState.on('batch-complete', () => this.updateSimulation());
 
     // Handle window resize
-    window.addEventListener('resize', () => this.onResize());
+    window.addEventListener('resize', () => this.onResize(), { signal: this.resizeAbort.signal });
+  }
+
+  destroy(): void {
+    this.resizeAbort.abort();
+    this.simulation.stop();
   }
 
   reset(): void {
