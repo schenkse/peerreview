@@ -103,8 +103,9 @@ export class RateLimiter {
         // Re-queue at front and wait for reset
         this.queue.unshift(entry);
         const retryAfter = res.headers.get('Retry-After');
-        if (retryAfter) {
-          this.resetAt = Date.now() + parseInt(retryAfter, 10) * 1000;
+        const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : NaN;
+        if (Number.isFinite(retrySeconds)) {
+          this.resetAt = Date.now() + retrySeconds * 1000;
         } else {
           this.resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
         }
@@ -124,10 +125,12 @@ export class RateLimiter {
     const reset = headers.get('X-RateLimit-Reset');
 
     if (remaining !== null) {
-      this.remaining = parseInt(remaining, 10);
+      const parsed = parseInt(remaining, 10);
+      if (Number.isFinite(parsed)) this.remaining = parsed;
     }
     if (reset !== null) {
-      this.resetAt = parseInt(reset, 10) * 1000; // convert seconds to ms
+      const parsed = parseInt(reset, 10);
+      if (Number.isFinite(parsed)) this.resetAt = parsed * 1000; // convert seconds to ms
     }
   }
 }
