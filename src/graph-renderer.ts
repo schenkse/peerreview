@@ -166,20 +166,20 @@ export class GraphRenderer {
   private ticked(): void {
     this.linkGroup
       .selectAll<SVGLineElement, CoauthorEdge>('line')
-      .attr('x1', (d) => (d.source as AuthorNode).x!)
-      .attr('y1', (d) => (d.source as AuthorNode).y!)
-      .attr('x2', (d) => (d.target as AuthorNode).x!)
-      .attr('y2', (d) => (d.target as AuthorNode).y!);
+      .attr('x1', (d) => (d.source as AuthorNode).x ?? 0)
+      .attr('y1', (d) => (d.source as AuthorNode).y ?? 0)
+      .attr('x2', (d) => (d.target as AuthorNode).x ?? 0)
+      .attr('y2', (d) => (d.target as AuthorNode).y ?? 0);
 
     this.nodeGroup
       .selectAll<SVGCircleElement, AuthorNode>('circle')
-      .attr('cx', (d) => d.x!)
-      .attr('cy', (d) => d.y!);
+      .attr('cx', (d) => d.x ?? 0)
+      .attr('cy', (d) => d.y ?? 0);
 
     this.labelGroup
       .selectAll<SVGTextElement, AuthorNode>('text')
-      .attr('x', (d) => d.x!)
-      .attr('y', (d) => d.y!);
+      .attr('x', (d) => d.x ?? 0)
+      .attr('y', (d) => d.y ?? 0);
   }
 
   private dragBehavior(): d3.DragBehavior<SVGCircleElement, AuthorNode, AuthorNode | d3.SubjectPosition> {
