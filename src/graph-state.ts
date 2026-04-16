@@ -6,7 +6,7 @@ export class GraphState {
   private nodes = new Map<string, AuthorNode>();
   private edges = new Map<string, CoauthorEdge>();
   private listeners = new Map<GraphEvent, Set<Listener>>();
-  private batching = false;
+  private batchDepth = 0;
   private batchDirty = false;
 
   // --- Queries ---
@@ -87,13 +87,13 @@ export class GraphState {
   // --- Batch support ---
 
   beginBatch(): void {
-    this.batching = true;
-    this.batchDirty = false;
+    if (this.batchDepth === 0) this.batchDirty = false;
+    this.batchDepth++;
   }
 
   endBatch(): void {
-    this.batching = false;
-    if (this.batchDirty) {
+    this.batchDepth--;
+    if (this.batchDepth === 0 && this.batchDirty) {
       this.batchDirty = false;
       this.emit('batch-complete', null);
     }
@@ -120,7 +120,7 @@ export class GraphState {
   }
 
   private emitOrBatch(event: GraphEvent, payload: unknown): void {
-    if (this.batching) {
+    if (this.batchDepth > 0) {
       this.batchDirty = true;
     } else {
       this.emit(event, payload);
