@@ -78,4 +78,4 @@ export interface NetworkProgress {
 
 // --- Event types ---
 
-export type GraphEvent = 'node-added' | 'edge-added' | 'edge-updated' | 'batch-complete';
+export type GraphEvent = 'node-added' | 'edge-added' | 'edge-updated' | 'batch-complete' | 'cleared';

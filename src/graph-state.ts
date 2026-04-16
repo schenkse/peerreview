@@ -83,6 +83,9 @@ export class GraphState {
     this.nodes.clear();
     this.edges.clear();
     this.adjacency.clear();
+    this.batchDepth = 0;
+    this.batchDirty = false;
+    this.emit('cleared', null);
   }
 
   // --- Batch support ---

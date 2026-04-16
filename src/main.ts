@@ -6,7 +6,7 @@ import { SearchUI } from './search';
 
 const graphState = new GraphState();
 
-const graphRenderer = new GraphRenderer(
+new GraphRenderer(
   document.getElementById('graph-container')!,
   graphState,
 );
@@ -22,7 +22,6 @@ new SearchUI(
   async (bai, name, recid) => {
     networkBuilder.cancel();
     graphState.clear();
-    graphRenderer.reset();
     progress.show();
     await networkBuilder.build(bai, name, recid, (p) => progress.update(p));
   },

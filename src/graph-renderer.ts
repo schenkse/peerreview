@@ -76,6 +76,7 @@ export class GraphRenderer {
     // Subscribe to graph state changes — individual add/update events are
     // suppressed during batches, so only batch-complete drives DOM updates.
     graphState.on('batch-complete', () => this.updateSimulation());
+    graphState.on('cleared', () => this.reset());
 
     // Handle window resize
     window.addEventListener('resize', () => this.onResize(), { signal: this.resizeAbort.signal });
