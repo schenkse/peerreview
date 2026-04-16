@@ -1,5 +1,4 @@
 import { fetchPublications } from './api';
-import { DEFAULT_PAGE_SIZE } from './constants';
 import type { GraphState } from './graph-state';
 import type { InspirePubHit, NetworkProgress } from './types';
 
@@ -161,8 +160,7 @@ export class NetworkBuilder {
       const result = await fetchPublications(bai, page, signal);
       allPubs.push(...result.hits.hits);
 
-      const totalFetched = page * DEFAULT_PAGE_SIZE;
-      if (totalFetched >= result.hits.total) break;
+      if (allPubs.length >= result.hits.total) break;
 
       page++;
     }
