@@ -1,4 +1,4 @@
-import { INSPIRE_BASE_URL, DEFAULT_PAGE_SIZE } from './constants';
+import { INSPIRE_BASE_URL, DEFAULT_PAGE_SIZE, MAX_COAUTHOR_COUNT } from './constants';
 import { rateLimiter } from './rate-limiter';
 import type { InspireAuthorHit, InspirePubHit, InspireSearchResponse } from './types';
 
@@ -24,10 +24,10 @@ export function fetchPublications(
   signal?: AbortSignal,
 ): Promise<InspireSearchResponse<InspirePubHit>> {
   const params = new URLSearchParams({
-    q: `a ${bai}`,
+    q: `a ${bai} and ac 1->${MAX_COAUTHOR_COUNT}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'author_count,authors.recid,authors.full_name,authors.ids',
+    fields: 'authors.recid,authors.full_name,authors.ids',
   });
   return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
 }

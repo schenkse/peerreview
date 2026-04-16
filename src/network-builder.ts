@@ -1,5 +1,5 @@
 import { fetchPublications } from './api';
-import { MAX_COAUTHOR_COUNT, DEFAULT_PAGE_SIZE } from './constants';
+import { DEFAULT_PAGE_SIZE } from './constants';
 import type { GraphState } from './graph-state';
 import type { InspirePubHit, NetworkProgress } from './types';
 
@@ -50,8 +50,6 @@ export class NetworkBuilder {
       const coauthorBais = new Map<string, string>(); // recid -> BAI
 
       for (const pub of publications) {
-        if (pub.metadata.author_count > MAX_COAUTHOR_COUNT) continue;
-
         this.graphState.beginBatch();
 
         for (const author of pub.metadata.authors) {
@@ -104,8 +102,6 @@ export class NetworkBuilder {
             this.graphState.beginBatch();
 
             for (const pub of coauthorPubs) {
-              if (pub.metadata.author_count > MAX_COAUTHOR_COUNT) continue;
-
               for (const author of pub.metadata.authors) {
                 if (!author.recid) continue;
                 const otherId = String(author.recid);
