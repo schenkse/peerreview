@@ -68,11 +68,6 @@ export class SearchUI {
   private renderDropdown(authors: InspireAuthorHit[]): void {
     this.dropdown.innerHTML = '';
 
-    if (authors.length === 0) {
-      this.hideDropdown();
-      return;
-    }
-
     for (const author of authors) {
       if (author.metadata.stub) continue;
 
@@ -101,9 +96,14 @@ export class SearchUI {
       this.dropdown.appendChild(item);
     }
 
-    if (this.dropdown.children.length > 0) {
-      this.dropdown.classList.add('visible');
+    if (this.dropdown.children.length === 0) {
+      const msg = document.createElement('div');
+      msg.className = 'search-dropdown-item search-dropdown-empty';
+      msg.textContent = authors.length === 0 ? 'No results found.' : 'No indexed authors found (missing INSPIRE BAI).';
+      this.dropdown.appendChild(msg);
     }
+
+    this.dropdown.classList.add('visible');
   }
 
   private hideDropdown(): void {
