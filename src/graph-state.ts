@@ -5,6 +5,7 @@ type Listener = (payload: unknown) => void;
 export class GraphState {
   private nodes = new Map<string, AuthorNode>();
   private edges = new Map<string, CoauthorEdge>();
+  private adjacency = new Map<string, Set<string>>();
   private listeners = new Map<GraphEvent, Set<Listener>>();
   private batchDepth = 0;
   private batchDirty = false;
@@ -28,14 +29,7 @@ export class GraphState {
   }
 
   getNeighborIds(nodeId: string): Set<string> {
-    const neighbors = new Set<string>();
-    for (const edge of this.edges.values()) {
-      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source.id;
-      const targetId = typeof edge.target === 'string' ? edge.target : edge.target.id;
-      if (sourceId === nodeId) neighbors.add(targetId);
-      if (targetId === nodeId) neighbors.add(sourceId);
-    }
-    return neighbors;
+    return this.adjacency.get(nodeId) ?? new Set();
   }
 
   get nodeCount(): number {
@@ -75,6 +69,12 @@ export class GraphState {
         paperIds: new Set([paperId]),
       };
       this.edges.set(key, edge);
+
+      if (!this.adjacency.has(sourceId)) this.adjacency.set(sourceId, new Set());
+      if (!this.adjacency.has(targetId)) this.adjacency.set(targetId, new Set());
+      this.adjacency.get(sourceId)!.add(targetId);
+      this.adjacency.get(targetId)!.add(sourceId);
+
       this.emitOrBatch('edge-added', edge);
     }
   }
@@ -82,6 +82,7 @@ export class GraphState {
   clear(): void {
     this.nodes.clear();
     this.edges.clear();
+    this.adjacency.clear();
   }
 
   // --- Batch support ---
