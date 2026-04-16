@@ -95,7 +95,11 @@ export class RateLimiter {
 
   private async executeRequest(entry: QueueEntry): Promise<void> {
     try {
-      const res = await fetch(entry.url, { signal: entry.signal });
+      const timeoutSignal = AbortSignal.timeout(30_000);
+      const signal = entry.signal
+        ? AbortSignal.any([entry.signal, timeoutSignal])
+        : timeoutSignal;
+      const res = await fetch(entry.url, { signal });
 
       this.updateFromHeaders(res.headers);
 
