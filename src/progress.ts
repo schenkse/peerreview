@@ -60,5 +60,6 @@ export class ProgressIndicator {
     this.bar.classList.remove('visible');
     this.fill.classList.remove('indeterminate');
     this.fill.style.width = '0%';
+    this.text.textContent = '';
   }
 }
