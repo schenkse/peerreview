@@ -6,7 +6,7 @@ import { SearchUI } from './search';
 
 const graphState = new GraphState();
 
-new GraphRenderer(
+const renderer = new GraphRenderer(
   document.getElementById('graph-container')!,
   graphState,
 );
@@ -30,3 +30,7 @@ document.getElementById('theme-toggle')!.addEventListener('click', () => {
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
 });
+
+document.getElementById('zoom-in')!.addEventListener('click', () => renderer.zoomIn());
+document.getElementById('zoom-out')!.addEventListener('click', () => renderer.zoomOut());
+document.getElementById('zoom-reset')!.addEventListener('click', () => renderer.resetView());

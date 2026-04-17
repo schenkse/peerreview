@@ -10,6 +10,7 @@ export class GraphRenderer {
   private nodeGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private labelGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private simulation: d3.Simulation<AuthorNode, CoauthorEdge>;
+  private zoom!: d3.ZoomBehavior<SVGSVGElement, unknown>;
   private width: number;
   private height: number;
   private resizeAbort = new AbortController();
@@ -46,13 +47,13 @@ export class GraphRenderer {
     this.labelGroup = this.g.append('g').attr('class', 'labels');
 
     // Zoom and pan
-    const zoom = d3
+    this.zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 5])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
       });
-    this.svg.call(zoom);
+    this.svg.call(this.zoom);
 
     // Force simulation
     this.simulation = d3
@@ -85,6 +86,18 @@ export class GraphRenderer {
   destroy(): void {
     this.resizeAbort.abort();
     this.simulation.stop();
+  }
+
+  zoomIn(): void {
+    this.svg.transition().duration(250).call(this.zoom.scaleBy, 1.4);
+  }
+
+  zoomOut(): void {
+    this.svg.transition().duration(250).call(this.zoom.scaleBy, 1 / 1.4);
+  }
+
+  resetView(): void {
+    this.svg.transition().duration(400).call(this.zoom.transform, d3.zoomIdentity);
   }
 
   reset(): void {
