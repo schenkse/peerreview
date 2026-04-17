@@ -308,6 +308,11 @@ h1 {
 
 #graph-container svg {
   display: block;
+  cursor: grab;
+}
+
+#graph-container svg:active {
+  cursor: grabbing;
 }
 
 /* --- Graph elements --- */
