@@ -84,3 +84,6 @@ For a researcher with many co-authors (50–100+), building the full network may
 | Data source | InspireHEP public REST API |
 
 No framework, no backend, no build-time data fetching.
+
+**Runtime dependency:** `d3` ^7.9.0  
+**Dev dependencies:** `typescript` ^5.7.0, `vite` ^6.0.0, `@types/d3` ^7.4.3
