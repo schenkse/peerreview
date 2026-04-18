@@ -17,8 +17,15 @@ export function setupHover(
       connectedIds.has(d.id),
     ).classed('dimmed', (d) => !connectedIds.has(d.id));
 
+    // Pulse highlighted nodes
+    svg.selectAll<SVGCircleElement, AuthorNode>('.node.highlighted').each(function () {
+      this.classList.remove('pulse');
+      void this.getBBox();
+      this.classList.add('pulse');
+    });
+
     // Edges
-    svg.selectAll<SVGLineElement, { source: AuthorNode; target: AuthorNode }>('.edge').classed(
+    svg.selectAll<SVGPathElement, { source: AuthorNode; target: AuthorNode }>('.edge').classed(
       'highlighted',
       (d) => {
         const sId = typeof d.source === 'string' ? d.source : d.source.id;
@@ -32,14 +39,15 @@ export function setupHover(
     });
 
     // Labels
-    svg.selectAll<SVGTextElement, AuthorNode>('.label').classed('highlighted', (d) =>
+    svg.selectAll<SVGGElement, AuthorNode>('.label-group').classed('highlighted', (d) =>
       connectedIds.has(d.id),
     ).classed('dimmed', (d) => !connectedIds.has(d.id));
   });
 
   circle.addEventListener('mouseleave', () => {
-    svg.selectAll('.node, .edge, .label')
+    svg.selectAll('.node, .edge, .label-group')
       .classed('highlighted', false)
       .classed('dimmed', false);
+    svg.selectAll('.node').classed('pulse', false);
   });
 }

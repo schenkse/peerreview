@@ -29,6 +29,7 @@ document.getElementById('theme-toggle')!.addEventListener('click', () => {
   const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
+  renderer.refreshColors();
 });
 
 document.getElementById('zoom-in')!.addEventListener('click', () => renderer.zoomIn());
