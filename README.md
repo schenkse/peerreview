@@ -1,27 +1,29 @@
 # PeerReview
 
-Visualize academic co-authorship networks for any researcher indexed on [InspireHEP](https://inspirehep.net). Search for a physicist by name, and PeerReview builds an interactive force-directed graph showing who they have published with and how strongly those collaborators are connected to one another.
+Visualize academic co-authorship networks for any researcher indexed on [InspireHEP](https://inspirehep.net). Search for a physicist by name and get an interactive graph showing who they've published with and how those collaborators connect to each other.
 
 ## Features
 
-- **Autocomplete search** — type a researcher's name and pick from live suggestions pulled from InspireHEP
-- **Force-directed graph** — nodes are authors, edges are shared papers; edge thickness scales with the number of co-authored papers
-- **Cross-link discovery** — co-author–to–co-author connections are fetched in the background and added to the graph as they arrive
-- **Live progress** — a status bar shows exactly what is being fetched and how far along the build is
-- **Hover highlighting** — hovering a node dims unrelated nodes and edges, focusing attention on the immediate neighborhood
-- **Large-collaboration filter** — papers with more than 10 authors (e.g. ATLAS, CMS) are skipped to keep the graph meaningful
-- **Search cancellation** — starting a new search immediately cancels any in-flight requests from the previous one
-- **Static deployment** — the entire app is a single HTML file + assets; no server required
+- **Live autocomplete** — search by name, pick from InspireHEP author suggestions
+- **Force-directed graph** — nodes are authors, edges are shared papers, thickness scales with collaboration strength
+- **Cross-link discovery** — co-author–to–co-author connections are fetched in the background and added as they arrive
+- **Live progress** — status bar tracks what's being fetched and how far along the build is
+- **Static deployment** — no server, no backend, no API key required
 
-## How it works
+## Usage
 
-1. You type a researcher's name (e.g. `Higgs, Peter`). The autocomplete dropdown queries the InspireHEP authors API and shows matching profiles.
-2. Selecting a result triggers a three-phase network build:
-   - **Phase 1 — Root publications:** All publications by the selected researcher are fetched (paginated, 250 per page). Each co-author on those papers becomes a node; edges to the root node are weighted by the number of shared papers.
-   - **Phase 2 — Cross-links:** Each co-author's publication list is fetched in parallel. Shared papers between any two co-authors who are already in the graph create additional edges, revealing the collaboration structure within the network.
-3. The D3 force simulation updates live as batches of nodes and edges arrive; you do not need to wait for the full fetch to explore the graph.
+Type a researcher's name (e.g. `Higgs, Peter`) into the search bar and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors — building the graph live as data arrives. Hover over any node to highlight its direct collaborators.
 
-## Setup
+## Tech stack
+
+| | |
+|---|---|
+| Language | TypeScript |
+| Bundler | Vite |
+| Graph rendering | D3 v7 (force simulation + SVG) |
+| Data source | InspireHEP public REST API |
+
+## Setup & development
 
 **Prerequisites:** Node.js 18+ and npm.
 
@@ -29,61 +31,19 @@ Visualize academic co-authorship networks for any researcher indexed on [Inspire
 git clone <repo-url>
 cd peerreview
 npm install
-```
-
-### Development
-
-```bash
-npm run dev
-```
-
-Opens a Vite dev server at `http://localhost:5173` with hot module replacement.
-
-### Production build
-
-```bash
-npm run build
-```
-
-Runs `tsc` for type checking, then Vite bundles everything into `dist/`. The output is fully static — no backend, no environment variables.
-
-### Preview the production build locally
-
-```bash
-npm run preview
+npm run dev      # dev server at http://localhost:5173
+npm run build    # type-check + production bundle → dist/
+npm run preview  # preview the production build locally
 ```
 
 ## Deployment
 
-Because the app is entirely client-side, you can host the contents of `dist/` anywhere that serves static files:
-
-- **GitHub Pages / GitLab Pages** — push `dist/` to a `gh-pages` branch or configure your CI to deploy it
-- **Netlify / Vercel / Cloudflare Pages** — point the build command to `npm run build` and the publish directory to `dist`
-- **Any web server** — copy `dist/` to your document root (Apache, nginx, Caddy, etc.)
-- **Subdirectory deployment** — `vite.config.ts` sets `base: './'`, so relative asset paths work regardless of where the app is mounted
+`npm run build` produces a fully static `dist/` directory — no environment variables, no backend. Deploy it to GitHub Pages, Netlify, Vercel, Cloudflare Pages, or any web server by serving that folder.
 
 ## InspireHEP API & rate limits
 
-All data is fetched live from the public [InspireHEP REST API](https://github.com/inspirehep/rest-api-doc) — no API key is required.
+All data comes from the public [InspireHEP REST API](https://github.com/inspirehep/rest-api-doc). InspireHEP enforces a limit of 15 requests per 5-second window; PeerReview handles this automatically with a sliding-window rate limiter. For researchers with many co-authors (50–100+), building the full network may take 1–2 minutes.
 
-InspireHEP enforces a limit of **15 requests per 5-second window**. PeerReview handles this automatically:
+## Acknowledgements
 
-- A sliding-window rate limiter queues all outgoing requests and spaces them to stay within the limit.
-- Responses are checked for `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers; if the API reports exhaustion, the limiter waits for the server-specified reset time before retrying.
-- HTTP 429 responses are caught and the request is re-queued automatically with a back-off derived from the `Retry-After` header.
-
-For a researcher with many co-authors (50–100+), building the full network may take a minute or two because of these limits. The progress bar keeps you informed.
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| Language | TypeScript 5 |
-| Bundler | Vite 6 |
-| Graph rendering | D3 v7 (force simulation + SVG) |
-| Data source | InspireHEP public REST API |
-
-No framework, no backend, no build-time data fetching.
-
-**Runtime dependency:** `d3` ^7.9.0  
-**Dev dependencies:** `typescript` ^5.7.0, `vite` ^6.0.0, `@types/d3` ^7.4.3
+Big thanks to the [InspireHEP team](https://inspirehep.net) for maintaining such a comprehensive and freely accessible API for the high-energy physics community.
