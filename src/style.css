@@ -17,10 +17,10 @@
   --text-secondary:    rgba(255, 255, 255, 0.4);
   --text-accent:       #7aa2ff;
   --accent:            #6e94ff;
-  --node-default:      #3d7ab5;
-  --node-root:         #e63946;
-  --node-degree-low:   #3d7ab5;
-  --node-degree-high:  #b44fcc;
+  --node-default:      #22d3ee;
+  --node-root:         #fb7185;
+  --node-degree-low:   #22d3ee;
+  --node-degree-high:  #a78bfa;
   --edge-default:      rgba(180, 180, 200, 0.22);
   --edge-highlighted:  #6e94ff;
   --label-default:     rgba(255, 255, 255, 0.65);
@@ -41,10 +41,10 @@
   --text-secondary:    rgba(0, 0, 0, 0.4);
   --text-accent:       #3b5bdb;
   --accent:            #3b5bdb;
-  --node-default:      #3b7dd8;
-  --node-root:         #d63031;
-  --node-degree-low:   #3b7dd8;
-  --node-degree-high:  #9b40c4;
+  --node-default:      #0891b2;
+  --node-root:         #f43f5e;
+  --node-degree-low:   #0891b2;
+  --node-degree-high:  #7c3aed;
   --edge-default:      rgba(80, 80, 110, 0.2);
   --edge-highlighted:  #3b5bdb;
   --label-default:     rgba(0, 0, 0, 0.6);
@@ -380,7 +380,7 @@ h1 {
 
 .label {
   fill: var(--label-default);
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.2px;
 }
 
