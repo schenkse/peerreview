@@ -12,7 +12,7 @@ Visualize academic co-authorship networks for any researcher indexed on [Inspire
 
 ## Usage
 
-Type a researcher's name (e.g. `Higgs, Peter`) into the search bar and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors — building the graph live as data arrives. Hover over any node to highlight its direct collaborators.
+Type a researcher's name (e.g. `Higgs, Peter`) into the search bar and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors, building the graph live as data arrives. Hover over any node to highlight its direct collaborators.
 
 ## Tech stack
 
@@ -46,4 +46,4 @@ All data comes from the public [InspireHEP REST API](https://github.com/inspireh
 
 ## Acknowledgements
 
-Big thanks to the [InspireHEP team](https://inspirehep.net) for maintaining such a comprehensive and freely accessible API for the high-energy physics community.
+Big thanks to the [InspireHEP team](https://inspirehep.net) for maintaining such a comprehensive and freely accessible API for the high-energy physics community. Data served by the InspireHEP API is available under [CC-BY-SA-4.0](https://creativecommons.org/licenses/by-sa/4.0/).
