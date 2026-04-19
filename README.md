@@ -2,6 +2,8 @@
 
 Visualize academic co-authorship networks for any researcher indexed on [InspireHEP](https://inspirehep.net). Search for a physicist by name and get an interactive graph showing who they've published with and how those collaborators connect to each other.
 
+> **Built with LLMs:** This project was developed with the assistance of AI language models, in particular [Claude Code](https://claude.ai/code) by Anthropic.
+
 ## Features
 
 - **Live autocomplete** — search by name, pick from InspireHEP author suggestions
