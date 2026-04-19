@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import type { AuthorNode, CoauthorEdge } from './types';
 import type { GraphState } from './graph-state';
-import { setupHover } from './hover';
+import { setupHover, clearHighlight } from './hover';
 
 export class GraphRenderer {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
@@ -82,6 +82,9 @@ export class GraphRenderer {
         this.g.attr('transform', event.transform);
       });
     this.svg.call(this.zoom);
+
+    // On touch devices, tapping the graph background clears any locked highlight
+    this.svg.on('click', () => clearHighlight(this.svg));
 
     // Force simulation
     this.simulation = d3

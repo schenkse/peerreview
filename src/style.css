@@ -333,6 +333,7 @@ h1 {
 #graph-container svg {
   display: block;
   cursor: grab;
+  touch-action: none;
 }
 
 #graph-container svg:active {
@@ -471,4 +472,18 @@ h1 {
 #zoom-controls button:hover {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
+}
+
+/* --- Mobile --- */
+
+@media (max-width: 600px) {
+  .header-left { display: none; }
+
+  #search-container { width: calc(100% - 56px); }
+
+  #zoom-controls button { width: 44px; height: 44px; }
+
+  .search-dropdown { max-height: 60vh; overflow-y: auto; }
+
+  .progress-text { white-space: normal; text-align: center; max-width: 80vw; }
 }
