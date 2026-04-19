@@ -31,22 +31,14 @@ export class ProgressIndicator {
     this.container.classList.add('visible');
     this.text.textContent = progress.message;
 
-    if (progress.phase === 'fetching-coauthors' && progress.totalCoauthors > 0) {
-      const pct = (progress.completedCoauthors / progress.totalCoauthors) * 100;
+    if (progress.phase === 'fetching-root' || progress.phase === 'fetching-coauthors') {
       this.bar.classList.add('visible');
-      this.fill.style.width = `${pct}%`;
-    } else if (progress.phase === 'fetching-root') {
-      this.bar.classList.add('visible');
-      this.fill.style.width = '0%';
-      this.fill.classList.add('indeterminate');
-    } else {
-      this.fill.classList.remove('indeterminate');
-      if (progress.phase === 'done' || progress.phase === 'error') {
-        this.fill.style.width = '100%';
-        // Auto-hide after a delay on completion
-        if (progress.phase === 'done') {
-          setTimeout(() => this.hide(), this.hideDelayMs);
-        }
+      const f = Math.max(0, Math.min(1, progress.fraction ?? 0));
+      this.fill.style.width = `${f * 100}%`;
+    } else if (progress.phase === 'done' || progress.phase === 'error') {
+      this.fill.style.width = '100%';
+      if (progress.phase === 'done') {
+        setTimeout(() => this.hide(), this.hideDelayMs);
       }
     }
   }
@@ -58,7 +50,6 @@ export class ProgressIndicator {
   hide(): void {
     this.container.classList.remove('visible');
     this.bar.classList.remove('visible');
-    this.fill.classList.remove('indeterminate');
     this.fill.style.width = '0%';
     this.text.textContent = '';
   }

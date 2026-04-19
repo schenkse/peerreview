@@ -74,6 +74,7 @@ export interface NetworkProgress {
   totalCoauthors: number;
   completedCoauthors: number;
   message: string;
+  fraction?: number;
 }
 
 // --- Event types ---

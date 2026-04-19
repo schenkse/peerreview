@@ -1,8 +1,11 @@
 import { fetchPublications } from './api';
+import { DEFAULT_PAGE_SIZE } from './constants';
 import type { GraphState } from './graph-state';
 import type { InspirePubHit, NetworkProgress } from './types';
 
 export type ProgressCallback = (progress: NetworkProgress) => void;
+
+const ROOT_PHASE_WEIGHT = 0.1;
 
 export class NetworkBuilder {
   private abortController: AbortController | null = null;
@@ -30,6 +33,7 @@ export class NetworkBuilder {
         phase: 'fetching-root',
         totalCoauthors: 0,
         completedCoauthors: 0,
+        fraction: 0,
         message: `Fetching publications for ${name}...`,
       });
 
@@ -43,7 +47,19 @@ export class NetworkBuilder {
         paperCount: 0,
       });
 
-      const publications = await this.fetchAllPublications(bai, signal);
+      const publications = await this.fetchAllPublications(
+        bai,
+        signal,
+        (completedPages, totalPages) => {
+          onProgress({
+            phase: 'fetching-root',
+            totalCoauthors: 0,
+            completedCoauthors: 0,
+            fraction: (completedPages / totalPages) * ROOT_PHASE_WEIGHT,
+            message: `Fetching publications for ${name}... (${completedPages}/${totalPages})`,
+          });
+        },
+      );
 
       // Process publications and build initial network
       const coauthorBais = new Map<string, string>(); // recid -> BAI
@@ -86,6 +102,7 @@ export class NetworkBuilder {
         phase: 'fetching-coauthors',
         totalCoauthors: total,
         completedCoauthors: 0,
+        fraction: ROOT_PHASE_WEIGHT,
         message: `Fetching co-author connections... 0/${total}`,
       });
 
@@ -123,6 +140,7 @@ export class NetworkBuilder {
             phase: 'fetching-coauthors',
             totalCoauthors: total,
             completedCoauthors: completed,
+            fraction: ROOT_PHASE_WEIGHT + (completed / total) * (1 - ROOT_PHASE_WEIGHT),
             message: `Fetching co-author connections... ${completed}/${total}`,
           });
         }),
@@ -133,6 +151,7 @@ export class NetworkBuilder {
         phase: 'done',
         totalCoauthors: total,
         completedCoauthors: total,
+        fraction: 1,
         message: `Done. ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections.${failureNote}`,
       });
     } catch (err) {
@@ -150,6 +169,7 @@ export class NetworkBuilder {
   private async fetchAllPublications(
     bai: string,
     signal: AbortSignal,
+    onPageProgress?: (completedPages: number, totalPages: number) => void,
   ): Promise<InspirePubHit[]> {
     const allPubs: InspirePubHit[] = [];
     let page = 1;
@@ -159,6 +179,9 @@ export class NetworkBuilder {
 
       const result = await fetchPublications(bai, page, signal);
       allPubs.push(...result.hits.hits);
+
+      const totalPages = Math.max(1, Math.ceil(result.hits.total / DEFAULT_PAGE_SIZE));
+      onPageProgress?.(page, totalPages);
 
       if (allPubs.length >= result.hits.total) break;
 

@@ -166,9 +166,12 @@ h1 {
   position: relative;
   flex: 0 0 auto;
   width: min(480px, 50vw);
+  isolation: isolate;
 }
 
 .search-input {
+  position: relative;
+  z-index: 2;
   width: 100%;
   padding: 10px 16px 10px 36px;
   background: var(--bg-surface);
@@ -183,6 +186,11 @@ h1 {
   background-position: 12px center;
   background-size: 15px 15px;
   transition: border-color 0.2s, background-color 0.2s;
+}
+
+#search-container:has(.progress-container.visible) .search-input {
+  background-color: transparent;
+  background-image: none;
 }
 
 .search-input::placeholder {
@@ -245,11 +253,7 @@ h1 {
 
 .progress-container {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 0;
-  overflow: visible;
+  inset: 0;
   pointer-events: none;
   display: none;
   z-index: 1;
@@ -259,22 +263,40 @@ h1 {
   display: block;
 }
 
+.progress-container::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 15px;
+  height: 15px;
+  margin-top: -7.5px;
+  border: 1.5px solid var(--border-subtle);
+  border-top-color: var(--text-secondary);
+  border-right-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  z-index: 3;
+}
+
 .progress-text {
   position: absolute;
-  top: 4px;
-  left: 2px;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 11px;
   color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 12px;
+  border-radius: 9999px;
   white-space: nowrap;
+  box-shadow: var(--shadow-dropdown);
 }
 
 .progress-bar {
   position: absolute;
-  bottom: 1px;
-  left: 10px;
-  right: 10px;
-  height: 2px;
-  background: var(--border-subtle);
+  inset: 0;
   border-radius: 9999px;
   overflow: hidden;
   display: none;
@@ -285,21 +307,17 @@ h1 {
 }
 
 .progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   transition: width 0.3s ease;
   width: 0%;
 }
 
-.progress-fill.indeterminate {
-  width: 30% !important;
-  animation: indeterminate 1.5s ease-in-out infinite;
-}
-
-@keyframes indeterminate {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* --- Graph --- */
