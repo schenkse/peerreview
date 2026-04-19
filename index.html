@@ -4,17 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PeerReview</title>
+  <script>
+    const s = localStorage.getItem('theme');
+    const os = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', s ?? os);
+  </script>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
   <header id="header">
     <div class="header-content">
-      <h1>PeerReview</h1>
+      <div class="header-left"><h1>PeerReview</h1></div>
       <div id="search-container"></div>
+      <div class="header-right">
+        <button id="theme-toggle" aria-label="Toggle theme"></button>
+      </div>
     </div>
-    <div id="progress"></div>
   </header>
   <main id="graph-container"></main>
+  <div id="zoom-controls">
+    <button id="zoom-in" aria-label="Zoom in">+</button>
+    <button id="zoom-out" aria-label="Zoom out">−</button>
+    <button id="zoom-reset" aria-label="Reset view">⊙</button>
+  </div>
   <script type="module" src="/src/main.ts"></script>
   <noscript>PeerReview requires JavaScript. Please enable it in your browser settings.</noscript>
 </body>
