@@ -5,3 +5,5 @@ export const RATE_LIMIT_MAX_REQUESTS = 15;
 export const RATE_LIMIT_WINDOW_MS = 5000;
 export const SEARCH_DEBOUNCE_MS = 300;
 export const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+export const COAUTHOR_BATCH_CHUNK_SIZE = 50;
+export const AUTHOR_PROFILE_CHUNK_SIZE = 100;

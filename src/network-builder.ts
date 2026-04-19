@@ -1,5 +1,9 @@
-import { fetchPublications } from './api';
-import { DEFAULT_PAGE_SIZE } from './constants';
+import { fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
+import {
+  AUTHOR_PROFILE_CHUNK_SIZE,
+  COAUTHOR_BATCH_CHUNK_SIZE,
+  DEFAULT_PAGE_SIZE,
+} from './constants';
 import type { GraphState } from './graph-state';
 import type { InspirePubHit, NetworkProgress } from './types';
 
@@ -93,10 +97,19 @@ export class NetworkBuilder {
       }
       this.graphState.endBatch();
 
-      // Phase 3: Fetch co-author publications for cross-links (parallel)
-      const coauthorIds = Array.from(coauthorBais.entries());
-      const total = coauthorIds.length;
-      let completed = 0;
+      // Phase 3: cross-links via chunked disjunctive queries,
+      // and canonical-name enrichment, in parallel.
+      const coauthorEntries = Array.from(coauthorBais.entries()); // [recidStr, bai][]
+      const coauthorRecids = coauthorEntries.map(([id]) => Number(id));
+      const total = coauthorEntries.length;
+
+      const baiChunks = chunk(
+        coauthorEntries.map(([, bai]) => bai),
+        COAUTHOR_BATCH_CHUNK_SIZE,
+      );
+      const totalChunks = baiChunks.length;
+      let completedChunks = 0;
+      let failures = 0;
 
       onProgress({
         phase: 'fetching-coauthors',
@@ -106,45 +119,52 @@ export class NetworkBuilder {
         message: `Fetching co-author connections... 0/${total}`,
       });
 
-      let failures = 0;
-
-      await Promise.allSettled(
-        coauthorIds.map(async ([coauthorId, coauthorBai]) => {
+      const crossLinks = Promise.allSettled(
+        baiChunks.map(async (chunkBais) => {
           if (signal.aborted) return;
 
           try {
-            const coauthorPubs = await this.fetchAllPublications(coauthorBai, signal);
-
-            this.graphState.beginBatch();
-
-            for (const pub of coauthorPubs) {
-              for (const author of pub.metadata.authors) {
-                if (!author.recid) continue;
-                const otherId = String(author.recid);
-
-                if (otherId !== coauthorId && this.graphState.hasNode(otherId)) {
-                  this.graphState.addOrUpdateEdge(coauthorId, otherId, pub.id);
-                }
-              }
-            }
-
-            this.graphState.endBatch();
+            const pubs = await this.fetchAllPublicationsBatch(chunkBais, signal);
+            this.addCrossEdges(pubs);
           } catch (err) {
             if ((err as Error).name === 'AbortError') return;
-            console.warn(`Failed to fetch publications for ${coauthorBai}:`, err);
-            failures++;
+            console.warn(
+              `Batch fetch failed for ${chunkBais.length} co-authors, falling back per-author:`,
+              err,
+            );
+            // Fallback: per-BAI within this chunk
+            await Promise.allSettled(
+              chunkBais.map(async (bai) => {
+                if (signal.aborted) return;
+                try {
+                  const pubs = await this.fetchAllPublications(bai, signal);
+                  this.addCrossEdges(pubs);
+                } catch (err2) {
+                  if ((err2 as Error).name === 'AbortError') return;
+                  console.warn(`Failed to fetch publications for ${bai}:`, err2);
+                  failures++;
+                }
+              }),
+            );
           }
 
-          completed++;
+          completedChunks++;
+          const done = Math.min(total, completedChunks * COAUTHOR_BATCH_CHUNK_SIZE);
           onProgress({
             phase: 'fetching-coauthors',
             totalCoauthors: total,
-            completedCoauthors: completed,
-            fraction: ROOT_PHASE_WEIGHT + (completed / total) * (1 - ROOT_PHASE_WEIGHT),
-            message: `Fetching co-author connections... ${completed}/${total}`,
+            completedCoauthors: done,
+            fraction:
+              ROOT_PHASE_WEIGHT +
+              (completedChunks / totalChunks) * (1 - ROOT_PHASE_WEIGHT),
+            message: `Fetching co-author connections... ${done}/${total}`,
           });
         }),
       );
+
+      const nameEnrichment = this.enrichAuthorNames(coauthorRecids, signal);
+
+      await Promise.all([crossLinks, nameEnrichment]);
 
       const failureNote = failures > 0 ? ` (${failures} co-author${failures === 1 ? '' : 's'} failed to load — cross-links may be incomplete)` : '';
       onProgress({
@@ -190,4 +210,80 @@ export class NetworkBuilder {
 
     return allPubs;
   }
+
+  private async fetchAllPublicationsBatch(
+    bais: string[],
+    signal: AbortSignal,
+  ): Promise<InspirePubHit[]> {
+    const allPubs: InspirePubHit[] = [];
+    let page = 1;
+
+    while (true) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+      const result = await fetchPublicationsBatch(bais, page, signal);
+      allPubs.push(...result.hits.hits);
+
+      if (allPubs.length >= result.hits.total) break;
+
+      page++;
+    }
+
+    return allPubs;
+  }
+
+  private addCrossEdges(pubs: InspirePubHit[]): void {
+    this.graphState.beginBatch();
+    for (const pub of pubs) {
+      const authors = pub.metadata.authors;
+      for (let i = 0; i < authors.length; i++) {
+        const aId = authors[i].recid ? String(authors[i].recid) : null;
+        if (!aId || !this.graphState.hasNode(aId)) continue;
+        for (let j = i + 1; j < authors.length; j++) {
+          const bId = authors[j].recid ? String(authors[j].recid) : null;
+          if (!bId || !this.graphState.hasNode(bId)) continue;
+          this.graphState.addOrUpdateEdge(aId, bId, pub.id);
+        }
+      }
+    }
+    this.graphState.endBatch();
+  }
+
+  private async enrichAuthorNames(
+    recids: number[],
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (recids.length === 0) return;
+    const chunks = chunk(recids, AUTHOR_PROFILE_CHUNK_SIZE);
+
+    await Promise.allSettled(
+      chunks.map(async (chunkRecids) => {
+        if (signal.aborted) return;
+        try {
+          const result = await fetchAuthorProfiles(chunkRecids, signal);
+          this.graphState.beginBatch();
+          for (const hit of result.hits.hits) {
+            const recid = hit.metadata.control_number;
+            const name = hit.metadata.name.preferred_name ?? hit.metadata.name.value;
+            if (recid && name) {
+              this.graphState.updateNodeName(String(recid), name);
+            }
+          }
+          this.graphState.endBatch();
+        } catch (err) {
+          if ((err as Error).name === 'AbortError') return;
+          console.warn(`Failed to enrich names for ${chunkRecids.length} authors:`, err);
+        }
+      }),
+    );
+  }
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  if (size <= 0) return [arr];
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
+  }
+  return out;
 }

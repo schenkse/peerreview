@@ -241,14 +241,18 @@ export class GraphRenderer {
     labelEnter.append('rect')
       .attr('class', 'label-bg')
       .attr('rx', 9.5).attr('ry', 9.5)
-      .attr('height', 19).attr('y', -9.5)
-      .attr('width', (d) => d.name.length * 7.1 + 14)
-      .attr('x', (d) => -(d.name.length * 7.1 + 14) / 2);
+      .attr('height', 19).attr('y', -9.5);
 
     labelEnter.append('text')
       .attr('class', 'label')
       .attr('x', 0).attr('dy', '0.35em')
-      .attr('text-anchor', 'middle')
+      .attr('text-anchor', 'middle');
+
+    const labelMerge = labelSel.merge(labelEnter);
+    labelMerge.select<SVGRectElement>('rect.label-bg')
+      .attr('width', (d) => d.name.length * 7.1 + 14)
+      .attr('x', (d) => -(d.name.length * 7.1 + 14) / 2);
+    labelMerge.select<SVGTextElement>('text.label')
       .text((d) => d.name);
 
     // Reheat gently

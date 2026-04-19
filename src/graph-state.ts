@@ -49,6 +49,13 @@ export class GraphState {
     return true;
   }
 
+  updateNodeName(id: string, name: string): void {
+    const node = this.nodes.get(id);
+    if (!node || node.name === name) return;
+    node.name = name;
+    this.emitOrBatch('node-updated', node);
+  }
+
   addOrUpdateEdge(sourceId: string, targetId: string, paperId: string): void {
     if (sourceId === targetId) return; // no self-loops
 

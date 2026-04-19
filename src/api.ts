@@ -31,3 +31,30 @@ export function fetchPublications(
   });
   return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
 }
+
+export function fetchPublicationsBatch(
+  bais: string[],
+  page = 1,
+  signal?: AbortSignal,
+): Promise<InspireSearchResponse<InspirePubHit>> {
+  const disjunction = bais.map((b) => `a ${b}`).join(' or ');
+  const params = new URLSearchParams({
+    q: `(${disjunction}) and ac 1->${MAX_COAUTHOR_COUNT}`,
+    size: String(DEFAULT_PAGE_SIZE),
+    page: String(page),
+    fields: 'authors.recid,authors.full_name,authors.ids',
+  });
+  return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
+}
+
+export function fetchAuthorProfiles(
+  recids: number[],
+  signal?: AbortSignal,
+): Promise<InspireSearchResponse<InspireAuthorHit>> {
+  const params = new URLSearchParams({
+    q: `control_number:(${recids.join(' OR ')})`,
+    size: String(DEFAULT_PAGE_SIZE),
+    fields: 'control_number,name,ids',
+  });
+  return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
+}
