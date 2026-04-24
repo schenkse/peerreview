@@ -589,12 +589,12 @@ h1 {
   border-top: 1px solid var(--border-subtle);
 }
 
-.info-attribution a {
+.info-card a {
   color: var(--text-accent);
   text-decoration: none;
 }
 
-.info-attribution a:hover {
+.info-card a:hover {
   text-decoration: underline;
 }
 
