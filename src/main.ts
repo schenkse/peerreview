@@ -35,3 +35,8 @@ document.getElementById('theme-toggle')!.addEventListener('click', () => {
 document.getElementById('zoom-in')!.addEventListener('click', () => renderer.zoomIn());
 document.getElementById('zoom-out')!.addEventListener('click', () => renderer.zoomOut());
 document.getElementById('zoom-reset')!.addEventListener('click', () => renderer.resetView());
+
+const infoModal = document.getElementById('info-modal')!;
+document.getElementById('info-btn')!.addEventListener('click', () => infoModal.classList.add('visible'));
+document.getElementById('info-close')!.addEventListener('click', () => infoModal.classList.remove('visible'));
+infoModal.addEventListener('click', (e) => { if (e.target === infoModal) infoModal.classList.remove('visible'); });

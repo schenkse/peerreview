@@ -435,13 +435,20 @@ h1 {
 
 /* --- Zoom controls --- */
 
-#zoom-controls {
+#bottom-right-controls {
   position: fixed;
   bottom: 24px;
   right: 24px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 8px;
   z-index: 5;
+}
+
+#zoom-controls {
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border-subtle);
   border-radius: 9999px;
   overflow: hidden;
@@ -451,8 +458,8 @@ h1 {
 }
 
 #zoom-controls button {
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -474,6 +481,123 @@ h1 {
   color: var(--text-primary);
 }
 
+#info-btn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  background: var(--bg-header);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+#info-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+/* --- Info modal --- */
+
+#info-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+#info-modal.visible {
+  display: flex;
+}
+
+.info-card {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 360px;
+  width: calc(100% - 48px);
+  box-shadow: var(--shadow-dropdown);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#info-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+#info-close:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.info-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-right: 32px;
+}
+
+.info-body {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.info-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.info-meta strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.info-attribution {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.info-card a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.info-card a:hover {
+  text-decoration: underline;
+}
+
 /* --- Mobile --- */
 
 @media (max-width: 600px) {
@@ -481,7 +605,8 @@ h1 {
 
   #search-container { width: calc(100% - 56px); }
 
-  #zoom-controls button { width: 44px; height: 44px; }
+  #zoom-controls button { width: 48px; height: 48px; }
+  #info-btn { width: 48px; height: 48px; }
 
   .search-dropdown { max-height: 60vh; overflow-y: auto; }
 

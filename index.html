@@ -22,10 +22,22 @@
     </div>
   </header>
   <main id="graph-container"></main>
-  <div id="zoom-controls">
-    <button id="zoom-in" aria-label="Zoom in">+</button>
-    <button id="zoom-out" aria-label="Zoom out">−</button>
-    <button id="zoom-reset" aria-label="Reset view">⊙</button>
+  <div id="bottom-right-controls">
+    <div id="zoom-controls">
+      <button id="zoom-in" aria-label="Zoom in">+</button>
+      <button id="zoom-reset" aria-label="Reset view">⊙</button>
+      <button id="zoom-out" aria-label="Zoom out">−</button>
+    </div>
+    <button id="info-btn" aria-label="About PeerReview">?</button>
+  </div>
+  <div id="info-modal">
+    <div class="info-card">
+      <button id="info-close" aria-label="Close">&times;</button>
+      <h2 class="info-title">PeerReview</h2>
+      <p class="info-body">Visualize academic co-authorship networks from the high-energy physics literature. Search for a researcher to explore who they collaborate with and how those collaborators are connected to each other.</p>
+      <p class="info-meta">Created by <a href="https://schenkse.github.io" target="_blank" rel="noopener">Sebastian Schenk</a> &amp; <strong>Claude</strong></p>
+      <p class="info-attribution">Powered by the <a href="https://inspirehep.net" target="_blank" rel="noopener">InspireHEP</a> REST API &mdash; a free, open resource maintained by the InspireHEP team for the high-energy physics community. See the <a href="https://github.com/inspirehep/rest-api-doc" target="_blank" rel="noopener">API docs</a>.</p>
+    </div>
   </div>
   <script type="module" src="/src/main.ts"></script>
   <noscript>PeerReview requires JavaScript. Please enable it in your browser settings.</noscript>
