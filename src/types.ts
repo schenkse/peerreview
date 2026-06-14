@@ -22,15 +22,12 @@ export interface InspirePubAuthor {
   full_name: string;
   recid: number;
   ids?: InspireAuthorId[];
-  record?: { $ref: string };
 }
 
 export interface InspirePubHit {
   id: string;
   metadata: {
-    titles: { title: string }[];
     authors: InspirePubAuthor[];
-    author_count: number;
   };
 }
 
@@ -50,7 +47,6 @@ export interface AuthorNode extends SimulationNodeDatum {
   name: string;
   bai?: string;
   isRoot: boolean;
-  paperCount: number;
 }
 
 export interface CoauthorEdge extends SimulationLinkDatum<AuthorNode> {
@@ -63,7 +59,6 @@ export interface CoauthorEdge extends SimulationLinkDatum<AuthorNode> {
 // --- Progress reporting ---
 
 export type NetworkPhase =
-  | 'searching'
   | 'fetching-root'
   | 'fetching-coauthors'
   | 'done'

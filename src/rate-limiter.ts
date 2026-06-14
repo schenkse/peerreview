@@ -5,6 +5,7 @@ interface QueueEntry {
   signal?: AbortSignal;
   resolve: (res: Response) => void;
   reject: (err: Error) => void;
+  removeAbortListener?: () => void;
 }
 
 export class RateLimiter {
@@ -21,16 +22,22 @@ export class RateLimiter {
         return;
       }
 
-      this.queue.push({ url, signal, resolve, reject });
+      const entry: QueueEntry = { url, signal, resolve, reject };
 
-      signal?.addEventListener('abort', () => {
-        const idx = this.queue.findIndex((e) => e.url === url && e.resolve === resolve);
-        if (idx !== -1) {
-          this.queue.splice(idx, 1);
-          reject(new DOMException('Aborted', 'AbortError'));
-        }
-      });
+      if (signal) {
+        const onAbort = () => {
+          const idx = this.queue.indexOf(entry);
+          if (idx !== -1) {
+            this.queue.splice(idx, 1);
+            this.settle(entry);
+            reject(new DOMException('Aborted', 'AbortError'));
+          }
+        };
+        signal.addEventListener('abort', onAbort);
+        entry.removeAbortListener = () => signal.removeEventListener('abort', onAbort);
+      }
 
+      this.queue.push(entry);
       this.drain();
     });
   }
@@ -45,6 +52,7 @@ export class RateLimiter {
       const entry = this.queue.shift()!;
 
       if (entry.signal?.aborted) {
+        this.settle(entry);
         entry.reject(new DOMException('Aborted', 'AbortError'));
         continue;
       }
@@ -93,6 +101,11 @@ export class RateLimiter {
     return RATE_LIMIT_WINDOW_MS;
   }
 
+  private settle(entry: QueueEntry): void {
+    entry.removeAbortListener?.();
+    entry.removeAbortListener = undefined;
+  }
+
   private async executeRequest(entry: QueueEntry): Promise<void> {
     try {
       const timeoutSignal = AbortSignal.timeout(30_000);
@@ -118,8 +131,10 @@ export class RateLimiter {
         return;
       }
 
+      this.settle(entry);
       entry.resolve(res);
     } catch (err) {
+      this.settle(entry);
       entry.reject(err as Error);
     }
   }

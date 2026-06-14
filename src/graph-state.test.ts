@@ -3,7 +3,7 @@ import { GraphState } from './graph-state';
 import type { AuthorNode } from './types';
 
 function node(id: string, isRoot = false): AuthorNode {
-  return { id, recid: Number(id), name: `Author ${id}`, isRoot, paperCount: 0 };
+  return { id, recid: Number(id), name: `Author ${id}`, isRoot };
 }
 
 describe('GraphState nodes', () => {

@@ -49,7 +49,6 @@ export class NetworkBuilder {
         name,
         bai,
         isRoot: true,
-        paperCount: 0,
       });
 
       const publications = await this.fetchAllPublications(
@@ -89,7 +88,6 @@ export class NetworkBuilder {
             name: author.full_name,
             bai: authorBai,
             isRoot: false,
-            paperCount: 0,
           });
 
           // Add edge between root and co-author
