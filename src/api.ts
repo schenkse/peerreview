@@ -1,13 +1,21 @@
 import { INSPIRE_BASE_URL, DEFAULT_PAGE_SIZE, MAX_COAUTHOR_COUNT } from './constants';
 import { rateLimiter } from './rate-limiter';
+import { TtlCache } from './cache';
 import type { InspireAuthorHit, InspirePubHit, InspireSearchResponse } from './types';
 
+const responseCache = new TtlCache<unknown>();
+
 async function request<T>(url: string, signal?: AbortSignal): Promise<InspireSearchResponse<T>> {
+  const cached = responseCache.get(url) as InspireSearchResponse<T> | undefined;
+  if (cached) return cached;
+
   const res = await rateLimiter.enqueue(url, signal);
   if (!res.ok) {
     throw new Error(`API request failed: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+  const data = (await res.json()) as InspireSearchResponse<T>;
+  responseCache.set(url, data);
+  return data;
 }
 
 export function searchAuthors(
