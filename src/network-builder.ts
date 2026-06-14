@@ -3,6 +3,7 @@ import {
   AUTHOR_PROFILE_CHUNK_SIZE,
   COAUTHOR_BATCH_CHUNK_SIZE,
   DEFAULT_PAGE_SIZE,
+  MAX_RESULT_WINDOW,
 } from './constants';
 import type { GraphState } from './graph-state';
 import type { InspirePubHit, NetworkProgress } from './types';
@@ -186,50 +187,41 @@ export class NetworkBuilder {
     }
   }
 
-  private async fetchAllPublications(
+  private fetchAllPublications(
     bai: string,
     signal: AbortSignal,
     onPageProgress?: (completedPages: number, totalPages: number) => void,
   ): Promise<InspirePubHit[]> {
-    const allPubs: InspirePubHit[] = [];
-    let page = 1;
-
-    while (true) {
-      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-
-      const result = await fetchPublications(bai, page, signal);
-      allPubs.push(...result.hits.hits);
-
-      const totalPages = Math.max(1, Math.ceil(result.hits.total / DEFAULT_PAGE_SIZE));
-      onPageProgress?.(page, totalPages);
-
-      if (allPubs.length >= result.hits.total) break;
-
-      page++;
-    }
-
-    return allPubs;
+    return collectPaginated<InspirePubHit>(
+      (page) =>
+        fetchPublications(bai, page, signal).then((r) => ({
+          items: r.hits.hits,
+          total: r.hits.total,
+        })),
+      {
+        pageSize: DEFAULT_PAGE_SIZE,
+        maxWindow: MAX_RESULT_WINDOW,
+        signal,
+        onPage: onPageProgress
+          ? (page, total) =>
+              onPageProgress(page, Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE)))
+          : undefined,
+      },
+    );
   }
 
-  private async fetchAllPublicationsBatch(
+  private fetchAllPublicationsBatch(
     bais: string[],
     signal: AbortSignal,
   ): Promise<InspirePubHit[]> {
-    const allPubs: InspirePubHit[] = [];
-    let page = 1;
-
-    while (true) {
-      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-
-      const result = await fetchPublicationsBatch(bais, page, signal);
-      allPubs.push(...result.hits.hits);
-
-      if (allPubs.length >= result.hits.total) break;
-
-      page++;
-    }
-
-    return allPubs;
+    return collectPaginated<InspirePubHit>(
+      (page) =>
+        fetchPublicationsBatch(bais, page, signal).then((r) => ({
+          items: r.hits.hits,
+          total: r.hits.total,
+        })),
+      { pageSize: DEFAULT_PAGE_SIZE, maxWindow: MAX_RESULT_WINDOW, signal },
+    );
   }
 
   private addCrossEdges(pubs: InspirePubHit[]): void {
@@ -286,4 +278,46 @@ function chunk<T>(arr: T[], size: number): T[][] {
     out.push(arr.slice(i, i + size));
   }
   return out;
+}
+
+export interface PaginatedPage<T> {
+  items: T[];
+  total: number;
+}
+
+/**
+ * Collect every item across a paginated source. Stops when:
+ *  - a page returns zero items (no forward progress — avoids an infinite loop
+ *    when the reported total never gets reached), or
+ *  - the accumulated count reaches the reported total, or
+ *  - the next page would exceed the API result window (page * pageSize >= maxWindow).
+ */
+export async function collectPaginated<T>(
+  fetchPage: (page: number) => Promise<PaginatedPage<T>>,
+  options: {
+    pageSize: number;
+    maxWindow: number;
+    signal?: AbortSignal;
+    onPage?: (page: number, total: number) => void;
+  },
+): Promise<T[]> {
+  const { pageSize, maxWindow, signal, onPage } = options;
+  const all: T[] = [];
+  let page = 1;
+
+  while (true) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    const { items, total } = await fetchPage(page);
+    all.push(...items);
+    onPage?.(page, total);
+
+    if (items.length === 0) break;          // no progress — stop (avoids infinite loop)
+    if (all.length >= total) break;          // collected everything
+    if (page * pageSize >= maxWindow) break; // hit the API result-window cap
+
+    page++;
+  }
+
+  return all;
 }
