@@ -154,7 +154,7 @@ describe('NetworkBuilder completeness', () => {
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
     expect(fetchPublications).toHaveBeenCalledWith('Author.2', 1, expect.any(AbortSignal));
     expect(fetchPublications).toHaveBeenCalledWith('Author.3', 1, expect.any(AbortSignal));
-    expect(graph.getEdges().find(e => e.paperIds.has('cross-Author.2'))?.weight).toBe(2);
+    expect(graph.getEdges().find(e => e.paperIds.has('cross-Author.2'))?.weight).toBe(3);
     expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
   });
 
@@ -178,5 +178,31 @@ describe('NetworkBuilder completeness', () => {
     const progress = vi.fn();
     await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
     expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
+  });
+});
+
+describe('NetworkBuilder publication reuse', () => {
+  it('uses root papers for coauthor cross-links even when identifiers remain missing', async () => {
+    const authors = [1, 2, 3].map(recid => ({ recid, full_name: `Author ${recid}` }));
+    vi.mocked(fetchPublications).mockResolvedValueOnce(response([paper('root', authors)]));
+    const graph = new GraphState();
+    await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
+    expect(graph.edgeCount).toBe(3);
+    expect(graph.getNeighborIds('2').has('3')).toBe(true);
+    expect(fetchPublicationsBatch).not.toHaveBeenCalled();
+  });
+
+  it('skips repeated papers across overlapping pages while preserving weights', async () => {
+    const root = paper('root', [author(1), author(2), author(3)]);
+    const cross = paper('cross', [author(2), author(3)]);
+    vi.mocked(fetchPublications).mockResolvedValueOnce(response([root]));
+    vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([root, cross, cross]));
+    const graph = new GraphState();
+    const updateEdge = vi.spyOn(graph, 'addOrUpdateEdge');
+    await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
+    expect(updateEdge.mock.calls.filter(([source, target, id]) =>
+      source === '2' && target === '3' && id === 'cross',
+    )).toHaveLength(1);
+    expect(graph.getEdges().find(edge => edge.paperIds.has('cross'))?.weight).toBe(2);
   });
 });

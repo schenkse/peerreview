@@ -52,10 +52,11 @@ export class NetworkBuilder {
       });
 
       const coauthorBais = new Map<string, string>(); // recid -> BAI
+      const seenPapers = new Set<string>();
       const publications = await this.fetchAllPublications(
         bai,
         signal,
-        pubs => this.addRootPublications(pubs, recid, coauthorBais),
+        pubs => this.addRootPublications(pubs, recid, coauthorBais, seenPapers),
         (completedPages, totalPages) => {
           onProgress({
             phase: 'fetching-root',
@@ -101,7 +102,7 @@ export class NetworkBuilder {
           if (signal.aborted) return;
 
           try {
-            const failed = await this.fetchCoauthorConnections(chunkBais, signal);
+            const failed = await this.fetchCoauthorConnections(chunkBais, signal, seenPapers);
             failures += failed;
           } catch (err) {
             if (signal.aborted) return;
@@ -149,10 +150,13 @@ export class NetworkBuilder {
     }
   }
 
-  private addRootPublications(pubs: InspirePubHit[], recid: number, coauthorBais: Map<string, string>): void {
+  private addRootPublications(
+    pubs: InspirePubHit[], recid: number, coauthorBais: Map<string, string>, seenPapers: Set<string>,
+  ): void {
     this.graphState.beginBatch();
     try {
       for (const pub of pubs) {
+        if (seenPapers.has(pub.id)) continue;
         for (const author of pub.metadata.authors) {
           if (!author.recid || author.recid === recid) continue;
           const authorId = String(author.recid);
@@ -162,6 +166,8 @@ export class NetworkBuilder {
           this.graphState.addOrUpdateEdge(String(recid), authorId, pub.id);
         }
       }
+      // These papers already establish connections between the root's coauthors.
+      this.addCrossEdges(pubs, seenPapers);
     } finally {
       this.graphState.endBatch();
     }
@@ -208,12 +214,12 @@ export class NetworkBuilder {
   }
 
   /** Split oversized or failing queries until each author can be fetched independently. */
-  private async fetchCoauthorConnections(bais: string[], signal: AbortSignal): Promise<number> {
+  private async fetchCoauthorConnections(bais: string[], signal: AbortSignal, seenPapers: Set<string>): Promise<number> {
     signal.throwIfAborted();
     try {
       const result = bais.length === 1
-        ? await this.fetchAllPublications(bais[0], signal, pubs => this.addCrossEdges(pubs))
-        : await this.fetchAllPublicationsBatch(bais, signal, pubs => this.addCrossEdges(pubs));
+        ? await this.fetchAllPublications(bais[0], signal, pubs => this.addCrossEdges(pubs, seenPapers))
+        : await this.fetchAllPublicationsBatch(bais, signal, pubs => this.addCrossEdges(pubs, seenPapers));
       signal.throwIfAborted();
       if (result.complete || bais.length === 1) {
         return result.complete ? 0 : 1;
@@ -227,27 +233,29 @@ export class NetworkBuilder {
     }
     const middle = Math.ceil(bais.length / 2);
     const failures = await Promise.all([
-      this.fetchCoauthorConnections(bais.slice(0, middle), signal),
-      this.fetchCoauthorConnections(bais.slice(middle), signal),
+      this.fetchCoauthorConnections(bais.slice(0, middle), signal, seenPapers),
+      this.fetchCoauthorConnections(bais.slice(middle), signal, seenPapers),
     ]);
     return failures[0] + failures[1];
   }
 
-  private addCrossEdges(pubs: InspirePubHit[]): void {
+  private addCrossEdges(pubs: InspirePubHit[], seenPapers: Set<string>): void {
     this.graphState.beginBatch();
-    for (const pub of pubs) {
-      const authors = pub.metadata.authors;
-      for (let i = 0; i < authors.length; i++) {
-        const aId = authors[i].recid ? String(authors[i].recid) : null;
-        if (!aId || !this.graphState.hasNode(aId)) continue;
-        for (let j = i + 1; j < authors.length; j++) {
-          const bId = authors[j].recid ? String(authors[j].recid) : null;
-          if (!bId || !this.graphState.hasNode(bId)) continue;
-          this.graphState.addOrUpdateEdge(aId, bId, pub.id);
+    try {
+      for (const pub of pubs) {
+        if (seenPapers.has(pub.id)) continue;
+        seenPapers.add(pub.id);
+        const ids = pub.metadata.authors.filter(author => author.recid && this.graphState.hasNode(String(author.recid)))
+          .map(author => String(author.recid));
+        for (let i = 0; i < ids.length; i++) {
+          for (let j = i + 1; j < ids.length; j++) {
+            this.graphState.addOrUpdateEdge(ids[i], ids[j], pub.id);
+          }
         }
       }
+    } finally {
+      this.graphState.endBatch();
     }
-    this.graphState.endBatch();
   }
 
   private async enrichAuthorNames(
