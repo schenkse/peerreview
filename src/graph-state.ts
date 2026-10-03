@@ -9,6 +9,7 @@ export class GraphState {
   private listeners = new Map<GraphEvent, Set<Listener>>();
   private batchDepth = 0;
   private batchDirty = false;
+  private batchLayoutChanged = false;
 
   // --- Queries ---
 
@@ -92,13 +93,17 @@ export class GraphState {
     this.adjacency.clear();
     this.batchDepth = 0;
     this.batchDirty = false;
+    this.batchLayoutChanged = false;
     this.emit('cleared', null);
   }
 
   // --- Batch support ---
 
   beginBatch(): void {
-    if (this.batchDepth === 0) this.batchDirty = false;
+    if (this.batchDepth === 0) {
+      this.batchDirty = false;
+      this.batchLayoutChanged = false;
+    }
     this.batchDepth++;
   }
 
@@ -106,7 +111,7 @@ export class GraphState {
     this.batchDepth--;
     if (this.batchDepth === 0 && this.batchDirty) {
       this.batchDirty = false;
-      this.emit('batch-complete', null);
+      this.emit('batch-complete', { layoutChanged: this.batchLayoutChanged });
     }
   }
 
@@ -133,6 +138,7 @@ export class GraphState {
   private emitOrBatch(event: GraphEvent, payload: unknown): void {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
+      this.batchLayoutChanged ||= event !== 'node-updated';
     } else {
       this.emit(event, payload);
     }

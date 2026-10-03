@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import type { AuthorNode, CoauthorEdge } from './types';
+import type { AuthorNode, CoauthorEdge, GraphChange } from './types';
 import type { GraphState } from './graph-state';
 import { setupHover, clearHighlight } from './hover';
 
@@ -105,9 +105,11 @@ export class GraphRenderer {
       .force('collide', d3.forceCollide<AuthorNode>().radius((d) => this.nodeRadius(d) + 4))
       .on('tick', () => this.ticked());
 
-    // Subscribe to graph state changes — individual add/update events are
-    // suppressed during batches, so only batch-complete drives DOM updates.
-    graphState.on('batch-complete', () => this.updateSimulation());
+    // Label edits do not change forces or node positions.
+    graphState.on('batch-complete', (change) => {
+      if ((change as GraphChange).layoutChanged) this.updateSimulation();
+      else this.refreshLabels();
+    });
     graphState.on('cleared', () => this.reset());
 
     // Handle window resize
@@ -141,7 +143,25 @@ export class GraphRenderer {
   }
 
   refreshColors(): void {
-    this.updateSimulation();
+    const style = getComputedStyle(this.container);
+    const lowColor = style.getPropertyValue('--node-degree-low').trim() || '#3d7ab5';
+    const highColor = style.getPropertyValue('--node-degree-high').trim() || '#b44fcc';
+    const rootId = this.graphState.getNodes().find(n => n.isRoot)?.id;
+    let maxDegree = 1;
+    for (const [id, degree] of this.degreeMap) {
+      if (id !== rootId) maxDegree = Math.max(maxDegree, degree);
+    }
+    const colorScale = d3.scaleSequential(d3.interpolate(lowColor, highColor)).domain([0, maxDegree]);
+    this.nodeGroup.selectAll<SVGCircleElement, AuthorNode>('circle')
+      .style('fill', d => d.isRoot ? 'var(--node-root)' : colorScale(this.degreeMap.get(d.id) ?? 0));
+  }
+
+  private refreshLabels(): void {
+    const labels = this.labelGroup.selectAll<SVGGElement, AuthorNode>('g.label-group');
+    labels.select<SVGRectElement>('rect.label-bg')
+      .attr('width', d => d.name.length * 7.8 + 22)
+      .attr('x', d => -(d.name.length * 7.8 + 22) / 2);
+    labels.select<SVGTextElement>('text.label').text(d => d.name);
   }
 
   private nodeRadius(d: AuthorNode): number {
@@ -172,17 +192,6 @@ export class GraphRenderer {
       'collide',
       d3.forceCollide<AuthorNode>().radius((d) => this.nodeRadius(d) + 4),
     );
-
-    // Build degree color scale from current theme CSS variables
-    const style = getComputedStyle(this.container);
-    const lowColor = style.getPropertyValue('--node-degree-low').trim() || '#3d7ab5';
-    const highColor = style.getPropertyValue('--node-degree-high').trim() || '#b44fcc';
-    const rootId = nodes.find((n) => n.isRoot)?.id;
-    const nonRootDegrees = [...this.degreeMap.entries()]
-      .filter(([id]) => id !== rootId)
-      .map(([, deg]) => deg);
-    const maxDeg = Math.max(1, ...nonRootDegrees);
-    const colorScale = d3.scaleSequential(d3.interpolate(lowColor, highColor)).domain([0, maxDeg]);
 
     // --- Links ---
     const linkSel = this.linkGroup
@@ -224,11 +233,8 @@ export class GraphRenderer {
       setupHover(nodes[i] as SVGCircleElement, d, this.graphState, this.svg);
     });
 
-    // Update radius and color on all nodes (degree changes each batch)
-    // .style() (inline style) is used for fill so it overrides the CSS class rule.
-    nodeSel.merge(nodeEnter)
-      .attr('r', (d) => this.nodeRadius(d))
-      .style('fill', (d) => d.isRoot ? 'var(--node-root)' : colorScale(this.degreeMap.get(d.id) ?? 0));
+    nodeSel.merge(nodeEnter).attr('r', (d) => this.nodeRadius(d));
+    this.refreshColors();
 
     // --- Labels ---
     const labelSel = this.labelGroup
@@ -253,12 +259,7 @@ export class GraphRenderer {
       .attr('x', 0).attr('dy', '0.35em')
       .attr('text-anchor', 'middle');
 
-    const labelMerge = labelSel.merge(labelEnter);
-    labelMerge.select<SVGRectElement>('rect.label-bg')
-      .attr('width', (d) => d.name.length * 7.8 + 22)
-      .attr('x', (d) => -(d.name.length * 7.8 + 22) / 2);
-    labelMerge.select<SVGTextElement>('text.label')
-      .text((d) => d.name);
+    this.refreshLabels();
 
     // Reheat gently
     this.simulation.alpha(0.3).restart();
