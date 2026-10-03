@@ -69,7 +69,7 @@ export class SearchUI {
   }
 
   private renderDropdown(authors: InspireAuthorHit[]): void {
-    this.dropdown.innerHTML = '';
+    this.dropdown.replaceChildren();
 
     for (const author of authors) {
       if (author.metadata.stub) continue;
@@ -84,11 +84,15 @@ export class SearchUI {
       const currentPosition = author.metadata.positions?.find((p) => p.current);
       const institution = currentPosition?.institution ?? '';
 
-      item.innerHTML = `
-        <span class="author-name">${this.escapeHtml(name)}</span>
-        ${institution ? `<span class="author-institution">${this.escapeHtml(institution)}</span>` : ''}
-        <span class="author-bai">${this.escapeHtml(bai)}</span>
-      `;
+      for (const [className, text] of [
+        ['author-name', name], ['author-institution', institution], ['author-bai', bai],
+      ]) {
+        if (!text) continue;
+        const span = document.createElement('span');
+        span.className = className;
+        span.textContent = text;
+        item.appendChild(span);
+      }
 
       item.addEventListener('click', () => {
         if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -113,12 +117,6 @@ export class SearchUI {
 
   private hideDropdown(): void {
     this.dropdown.classList.remove('visible');
-    this.dropdown.innerHTML = '';
-  }
-
-  private escapeHtml(str: string): string {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    this.dropdown.replaceChildren();
   }
 }
