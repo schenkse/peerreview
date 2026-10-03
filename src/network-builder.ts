@@ -33,7 +33,7 @@ export class NetworkBuilder {
     const signal = this.abortController.signal;
 
     try {
-      // Phase 2: Fetch root publications
+      // Discover the initial network one publication page at a time.
       onProgress({
         phase: 'fetching-root',
         totalCoauthors: 0,
@@ -51,9 +51,11 @@ export class NetworkBuilder {
         isRoot: true,
       });
 
+      const coauthorBais = new Map<string, string>(); // recid -> BAI
       const publications = await this.fetchAllPublications(
         bai,
         signal,
+        pubs => this.addRootPublications(pubs, recid, coauthorBais),
         (completedPages, totalPages) => {
           onProgress({
             phase: 'fetching-root',
@@ -65,37 +67,6 @@ export class NetworkBuilder {
         },
       );
       signal.throwIfAborted();
-
-      // Process publications and build initial network
-      const coauthorBais = new Map<string, string>(); // recid -> BAI
-
-      this.graphState.beginBatch();
-      for (const pub of publications.items) {
-        for (const author of pub.metadata.authors) {
-          if (!author.recid || author.recid === recid) continue;
-
-          const authorId = String(author.recid);
-
-          // Extract BAI if available
-          const authorBai = author.ids?.find((id) => id.schema === 'INSPIRE BAI')?.value;
-          if (authorBai && !coauthorBais.has(authorId)) {
-            coauthorBais.set(authorId, authorBai);
-          }
-
-          // Add co-author as node
-          this.graphState.addNode({
-            id: authorId,
-            recid: author.recid,
-            name: author.full_name,
-            bai: authorBai,
-            isRoot: false,
-          });
-
-          // Add edge between root and co-author
-          this.graphState.addOrUpdateEdge(String(recid), authorId, pub.id);
-        }
-      }
-      this.graphState.endBatch();
 
       // Profiles provide canonical names and identifiers absent from publication metadata.
       const coauthorRecids = this.graphState.getNodes().filter(node => !node.isRoot).map(node => node.recid);
@@ -130,7 +101,8 @@ export class NetworkBuilder {
           if (signal.aborted) return;
 
           try {
-            failures += await this.fetchCoauthorConnections(chunkBais, signal);
+            const failed = await this.fetchCoauthorConnections(chunkBais, signal);
+            failures += failed;
           } catch (err) {
             if (signal.aborted) return;
             throw err;
@@ -156,7 +128,7 @@ export class NetworkBuilder {
       signal.throwIfAborted();
 
       const notes: string[] = [];
-      if (!publications.complete) notes.push(`Root publications are incomplete (${publications.items.length}/${publications.total} retrieved).`);
+      if (!publications.complete) notes.push(`Root publications are incomplete (${publications.count}/${publications.total} retrieved).`);
       if (failures > 0) notes.push(`Connections for ${failures} co-author${failures === 1 ? '' : 's'} are incomplete.`);
       onProgress({
         phase: 'done',
@@ -177,12 +149,31 @@ export class NetworkBuilder {
     }
   }
 
+  private addRootPublications(pubs: InspirePubHit[], recid: number, coauthorBais: Map<string, string>): void {
+    this.graphState.beginBatch();
+    try {
+      for (const pub of pubs) {
+        for (const author of pub.metadata.authors) {
+          if (!author.recid || author.recid === recid) continue;
+          const authorId = String(author.recid);
+          const bai = author.ids?.find(id => id.schema === 'INSPIRE BAI')?.value;
+          if (bai) coauthorBais.set(authorId, bai);
+          this.graphState.addNode({ id: authorId, recid: author.recid, name: author.full_name, bai, isRoot: false });
+          this.graphState.addOrUpdateEdge(String(recid), authorId, pub.id);
+        }
+      }
+    } finally {
+      this.graphState.endBatch();
+    }
+  }
+
   private fetchAllPublications(
     bai: string,
     signal: AbortSignal,
+    onItems: (pubs: InspirePubHit[]) => void,
     onPageProgress?: (completedPages: number, totalPages: number) => void,
-  ): Promise<PaginatedResult<InspirePubHit>> {
-    return collectPaginated<InspirePubHit>(
+  ): Promise<PaginationResult> {
+    return visitPaginated<InspirePubHit>(
       (page) =>
         fetchPublications(bai, page, signal).then((r) => ({
           items: r.hits.hits,
@@ -192,6 +183,7 @@ export class NetworkBuilder {
         pageSize: DEFAULT_PAGE_SIZE,
         maxWindow: MAX_RESULT_WINDOW,
         signal,
+        onItems,
         onPage: onPageProgress
           ? (page, total) =>
               onPageProgress(page, Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE)))
@@ -203,14 +195,15 @@ export class NetworkBuilder {
   private fetchAllPublicationsBatch(
     bais: string[],
     signal: AbortSignal,
-  ): Promise<PaginatedResult<InspirePubHit>> {
-    return collectPaginated<InspirePubHit>(
+    onItems: (pubs: InspirePubHit[]) => void,
+  ): Promise<PaginationResult> {
+    return visitPaginated<InspirePubHit>(
       (page) =>
         fetchPublicationsBatch(bais, page, signal).then((r) => ({
           items: r.hits.hits,
           total: r.hits.total,
         })),
-      { pageSize: DEFAULT_PAGE_SIZE, maxWindow: MAX_RESULT_WINDOW, signal },
+      { pageSize: DEFAULT_PAGE_SIZE, maxWindow: MAX_RESULT_WINDOW, signal, onItems },
     );
   }
 
@@ -219,11 +212,10 @@ export class NetworkBuilder {
     signal.throwIfAborted();
     try {
       const result = bais.length === 1
-        ? await this.fetchAllPublications(bais[0], signal)
-        : await this.fetchAllPublicationsBatch(bais, signal);
+        ? await this.fetchAllPublications(bais[0], signal, pubs => this.addCrossEdges(pubs))
+        : await this.fetchAllPublicationsBatch(bais, signal, pubs => this.addCrossEdges(pubs));
       signal.throwIfAborted();
       if (result.complete || bais.length === 1) {
-        this.addCrossEdges(result.items);
         return result.complete ? 0 : 1;
       }
     } catch (err) {
@@ -310,28 +302,28 @@ export interface PaginatedPage<T> {
   total: number;
 }
 
-export interface PaginatedResult<T> extends PaginatedPage<T> {
+export interface PaginationResult {
+  count: number;
+  total: number;
   complete: boolean;
 }
 
 /**
- * Collect every item across a paginated source. Stops when:
- *  - a page returns zero items (no forward progress — avoids an infinite loop
- *    when the reported total never gets reached), or
- *  - the accumulated count reaches the reported total, or
- *  - the next page would exceed the API result window (page * pageSize >= maxWindow).
+ * Visit pages without retaining their items. Stop at the reported total, an empty
+ * page, or the result window, and report whether the source was fully retrieved.
  */
-export async function collectPaginated<T>(
+export async function visitPaginated<T>(
   fetchPage: (page: number) => Promise<PaginatedPage<T>>,
   options: {
     pageSize: number;
     maxWindow: number;
     signal?: AbortSignal;
+    onItems?: (items: T[]) => void;
     onPage?: (page: number, total: number) => void;
   },
-): Promise<PaginatedResult<T>> {
-  const { pageSize, maxWindow, signal, onPage } = options;
-  const all: T[] = [];
+): Promise<PaginationResult> {
+  const { pageSize, maxWindow, signal, onItems, onPage } = options;
+  let count = 0;
   let page = 1;
   let total = 0;
 
@@ -342,15 +334,17 @@ export async function collectPaginated<T>(
     signal?.throwIfAborted();
     const items = result.items;
     total = result.total;
-    all.push(...items);
+    count += items.length;
+    onItems?.(items);
+    signal?.throwIfAborted();
     onPage?.(page, total);
 
     if (items.length === 0) break;          // no progress — stop (avoids infinite loop)
-    if (all.length >= total) break;          // collected everything
+    if (count >= total) break;               // visited everything
     if ((page + 1) * pageSize > maxWindow) break; // next page exceeds the result window
 
     page++;
   }
 
-  return { items: all, total, complete: all.length >= total };
+  return { count, total, complete: count >= total };
 }

@@ -125,6 +125,23 @@ describe('NetworkBuilder author profiles', () => {
 });
 
 describe('NetworkBuilder completeness', () => {
+  it('renders root pages before later pages finish loading', async () => {
+    const second = deferred<InspireSearchResponse<InspirePubHit>>();
+    vi.mocked(fetchPublications).mockImplementation((_bai, page) => page === 1
+      ? Promise.resolve(response([paper('first', [author(1), author(2)])], 2))
+      : second.promise,
+    );
+    const graph = new GraphState();
+    const builder = new NetworkBuilder(graph);
+    const pending = builder.build('Author.1', 'Root', 1, vi.fn());
+    await vi.waitFor(() => expect(fetchPublications).toHaveBeenCalledWith('Author.1', 2, expect.any(AbortSignal)));
+    expect(graph.hasNode('2')).toBe(true);
+    expect(graph.edgeCount).toBe(1);
+    builder.cancel();
+    second.resolve(response([paper('second', [author(1), author(3)])], 2));
+    await pending;
+    expect(graph.hasNode('3')).toBe(false);
+  });
   it('splits incomplete batches and includes publications from both halves', async () => {
     vi.mocked(fetchPublications).mockImplementation(async (bai) => response([
       bai === 'Author.1'
