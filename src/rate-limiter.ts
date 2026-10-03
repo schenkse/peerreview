@@ -6,6 +6,7 @@ interface QueueEntry {
   resolve: (res: Response) => void;
   reject: (err: Error) => void;
   removeAbortListener?: () => void;
+  retries: number;
 }
 
 export class RateLimiter {
@@ -14,6 +15,7 @@ export class RateLimiter {
   private drainScheduled = false;
   private remaining: number | null = null;
   private resetAt: number | null = null;
+  private retryAt = 0;
 
   enqueue(url: string, signal?: AbortSignal): Promise<Response> {
     return new Promise<Response>((resolve, reject) => {
@@ -22,7 +24,7 @@ export class RateLimiter {
         return;
       }
 
-      const entry: QueueEntry = { url, signal, resolve, reject };
+      const entry: QueueEntry = { url, signal, resolve, reject, retries: 0 };
 
       if (signal) {
         const onAbort = () => {
@@ -75,6 +77,7 @@ export class RateLimiter {
   }
 
   private canSend(now: number): boolean {
+    if (now < this.retryAt) return false;
     // If we have API-reported remaining count, use it
     if (this.remaining !== null && this.resetAt !== null) {
       if (this.remaining <= 0 && now < this.resetAt) {
@@ -87,18 +90,13 @@ export class RateLimiter {
   }
 
   private getNextSlotDelay(now: number): number {
-    // If API told us when the reset happens, use that
-    if (this.resetAt !== null && now < this.resetAt) {
-      return this.resetAt - now + 50; // small buffer
-    }
-
-    // Otherwise wait until the oldest timestamp expires
-    if (this.timestamps.length > 0) {
-      const oldest = this.timestamps[0];
-      return oldest + RATE_LIMIT_WINDOW_MS - now + 50;
-    }
-
-    return RATE_LIMIT_WINDOW_MS;
+    const localReset = this.timestamps.length >= RATE_LIMIT_MAX_REQUESTS
+      ? this.timestamps[0] + RATE_LIMIT_WINDOW_MS
+      : now;
+    const serverReset = this.remaining !== null && this.remaining <= 0
+      ? this.resetAt ?? now
+      : now;
+    return Math.max(this.retryAt, localReset, serverReset, now) - now + 50;
   }
 
   private settle(entry: QueueEntry): void {
@@ -117,18 +115,22 @@ export class RateLimiter {
       this.updateFromHeaders(res.headers);
 
       if (res.status === 429) {
-        // Re-queue at front and wait for reset
-        this.queue.unshift(entry);
         const retryAfter = res.headers.get('Retry-After');
-        const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : NaN;
-        if (Number.isFinite(retrySeconds)) {
-          this.resetAt = Date.now() + retrySeconds * 1000;
-        } else {
-          this.resetAt = Date.now() + RATE_LIMIT_WINDOW_MS;
+        const now = Date.now();
+        const seconds = retryAfter !== null ? Number(retryAfter) : NaN;
+        const deadline = Number.isFinite(seconds)
+          ? now + Math.max(0, seconds) * 1000
+          : Date.parse(retryAfter ?? '');
+        // Ordinary response headers must never shorten a 429 cooldown.
+        this.retryAt = Math.max(this.retryAt, now + RATE_LIMIT_WINDOW_MS,
+          Number.isFinite(deadline) ? deadline : 0, this.resetAt ?? 0);
+        if (entry.retries < 3) {
+          entry.retries++;
+          void res.body?.cancel().catch(() => {});
+          this.queue.unshift(entry);
+          this.drain();
+          return;
         }
-        this.remaining = 0;
-        this.drain();
-        return;
       }
 
       this.settle(entry);
