@@ -134,6 +134,7 @@ export class GraphRenderer {
   }
 
   reset(): void {
+    clearHighlight(this.svg);
     this.linkGroup.selectAll('*').remove();
     this.nodeGroup.selectAll('*').remove();
     this.labelGroup.selectAll('*').remove();

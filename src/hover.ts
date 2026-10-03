@@ -1,5 +1,5 @@
 import type * as d3 from 'd3';
-import type { AuthorNode } from './types';
+import type { AuthorNode, CoauthorEdge } from './types';
 import type { GraphState } from './graph-state';
 
 let activeNodeId: string | null = null;
@@ -9,20 +9,15 @@ function applyHighlight(
   graphState: GraphState,
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
 ): void {
-  const connectedIds = graphState.getNeighborIds(nodeId);
+  const connectedIds = new Set(graphState.getNeighborIds(nodeId));
   connectedIds.add(nodeId);
 
   svg.selectAll<SVGCircleElement, AuthorNode>('.node')
     .classed('highlighted', (d) => connectedIds.has(d.id))
-    .classed('dimmed', (d) => !connectedIds.has(d.id));
+    .classed('dimmed', (d) => !connectedIds.has(d.id))
+    .classed('pulse', (d) => d.id === nodeId);
 
-  svg.selectAll<SVGCircleElement, AuthorNode>('.node.highlighted').each(function () {
-    this.classList.remove('pulse');
-    void this.getBBox();
-    this.classList.add('pulse');
-  });
-
-  svg.selectAll<SVGPathElement, { source: AuthorNode; target: AuthorNode }>('.edge')
+  svg.selectAll<SVGPathElement, CoauthorEdge>('.edge')
     .classed('highlighted', (d) => {
       const sId = typeof d.source === 'string' ? d.source : d.source.id;
       const tId = typeof d.target === 'string' ? d.target : d.target.id;

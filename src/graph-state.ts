@@ -29,7 +29,7 @@ export class GraphState {
     return this.nodes.has(id);
   }
 
-  getNeighborIds(nodeId: string): Set<string> {
+  getNeighborIds(nodeId: string): ReadonlySet<string> {
     return this.adjacency.get(nodeId) ?? new Set();
   }
 
