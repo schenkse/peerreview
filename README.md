@@ -27,13 +27,14 @@ Type a researcher's name (e.g. `Higgs, Peter`) into the search bar and select a 
 
 ## Setup & development
 
-**Prerequisites:** Node.js 18+ and npm.
+**Prerequisites:** Node.js 20.19+ and npm.
 
 ```bash
 git clone <repo-url>
 cd peerreview
 npm install
 npm run dev      # dev server at http://localhost:5173
+npm test         # unit, network-building, and DOM interaction tests
 npm run build    # type-check + production bundle → dist/
 npm run preview  # preview the production build locally
 ```
@@ -41,6 +42,8 @@ npm run preview  # preview the production build locally
 ## Deployment
 
 `npm run build` produces a fully static `dist/` directory — no environment variables, no backend. Deploy it to GitHub Pages, Netlify, Vercel, Cloudflare Pages, or any web server by serving that folder.
+
+The GitHub Pages workflow runs the test suite and production build before deploying.
 
 ## InspireHEP API & rate limits
 
