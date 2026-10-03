@@ -228,7 +228,8 @@ h1 {
   transition: background 0.15s;
 }
 
-.search-dropdown-item:hover {
+.search-dropdown-item:hover,
+.search-dropdown-item[aria-selected="true"] {
   background: var(--bg-surface-hover);
 }
 

@@ -9,6 +9,7 @@ export class SearchUI {
   private dropdown: HTMLDivElement;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private abortController: AbortController | null = null;
+  private activeIndex = -1;
 
   constructor(
     container: HTMLElement,
@@ -18,30 +19,39 @@ export class SearchUI {
     this.input.type = 'text';
     this.input.placeholder = 'Search researcher (e.g. Higgs, Peter)';
     this.input.className = 'search-input';
+    this.input.setAttribute('role', 'combobox');
+    this.input.setAttribute('aria-label', 'Search researcher');
+    this.input.setAttribute('aria-autocomplete', 'list');
+    this.input.setAttribute('aria-expanded', 'false');
+    this.input.setAttribute('aria-controls', 'author-suggestions');
 
     this.dropdown = document.createElement('div');
     this.dropdown.className = 'search-dropdown';
+    this.dropdown.id = 'author-suggestions';
+    this.dropdown.setAttribute('role', 'listbox');
+    this.dropdown.setAttribute('aria-label', 'Researcher suggestions');
 
     container.appendChild(this.input);
     container.appendChild(this.dropdown);
 
     this.input.addEventListener('input', () => this.onInput());
+    this.input.addEventListener('keydown', event => this.onKeyDown(event));
     this.input.addEventListener('focus', () => {
       if (this.dropdown.children.length > 0) {
-        this.dropdown.classList.add('visible');
+        this.showDropdown();
       }
     });
 
     document.addEventListener('click', (e) => {
       if (!container.contains(e.target as Node)) {
-        this.dropdown.classList.remove('visible');
+        this.cancelSearch();
+        this.hideDropdown();
       }
     });
   }
 
   private onInput(): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    if (this.abortController) this.abortController.abort();
+    this.cancelSearch();
     this.hideDropdown();
 
     const query = this.input.value.trim();
@@ -51,6 +61,38 @@ export class SearchUI {
     }
 
     this.debounceTimer = setTimeout(() => this.search(query), SEARCH_DEBOUNCE_MS);
+  }
+
+  private cancelSearch(): void {
+    if (this.debounceTimer !== null) clearTimeout(this.debounceTimer);
+    this.debounceTimer = null;
+    this.abortController?.abort();
+  }
+
+  private onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape' && this.dropdown.classList.contains('visible')) event.preventDefault();
+      this.cancelSearch();
+      this.hideDropdown();
+      return;
+    }
+    const options = this.dropdown.querySelectorAll<HTMLDivElement>('[role="option"]');
+    if (options.length === 0) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      this.activeIndex = this.activeIndex === -1
+        ? direction === 1 ? 0 : options.length - 1
+        : (this.activeIndex + direction + options.length) % options.length;
+      this.showDropdown();
+      options.forEach((option, index) => option.setAttribute('aria-selected', String(index === this.activeIndex)));
+      const active = options[this.activeIndex];
+      this.input.setAttribute('aria-activedescendant', active.id);
+      active.scrollIntoView?.({ block: 'nearest' });
+    } else if (event.key === 'Enter' && this.activeIndex >= 0) {
+      event.preventDefault();
+      options[this.activeIndex].click();
+    }
   }
 
   private async search(query: string): Promise<void> {
@@ -70,6 +112,8 @@ export class SearchUI {
 
   private renderDropdown(authors: InspireAuthorHit[]): void {
     this.dropdown.replaceChildren();
+    this.activeIndex = -1;
+    this.input.removeAttribute('aria-activedescendant');
 
     for (const author of authors) {
       if (author.metadata.stub) continue;
@@ -79,6 +123,10 @@ export class SearchUI {
 
       const item = document.createElement('div');
       item.className = 'search-dropdown-item';
+      item.id = `author-option-${author.metadata.control_number}`;
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', 'false');
+      item.addEventListener('mousedown', event => event.preventDefault());
 
       const name = author.metadata.name.preferred_name || author.metadata.name.value;
       const currentPosition = author.metadata.positions?.find((p) => p.current);
@@ -95,8 +143,7 @@ export class SearchUI {
       }
 
       item.addEventListener('click', () => {
-        if (this.debounceTimer) clearTimeout(this.debounceTimer);
-        this.abortController?.abort();
+        this.cancelSearch();
         this.input.value = name;
         this.hideDropdown();
         this.onAuthorSelected(bai, name, author.metadata.control_number);
@@ -108,15 +155,24 @@ export class SearchUI {
     if (this.dropdown.children.length === 0) {
       const msg = document.createElement('div');
       msg.className = 'search-dropdown-item search-dropdown-empty';
+      msg.setAttribute('role', 'status');
       msg.textContent = authors.length === 0 ? 'No results found.' : 'No indexed authors found (missing INSPIRE BAI).';
       this.dropdown.appendChild(msg);
     }
 
+    this.showDropdown();
+  }
+
+  private showDropdown(): void {
     this.dropdown.classList.add('visible');
+    this.input.setAttribute('aria-expanded', 'true');
   }
 
   private hideDropdown(): void {
     this.dropdown.classList.remove('visible');
     this.dropdown.replaceChildren();
+    this.activeIndex = -1;
+    this.input.setAttribute('aria-expanded', 'false');
+    this.input.removeAttribute('aria-activedescendant');
   }
 }
