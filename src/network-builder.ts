@@ -70,7 +70,7 @@ export class NetworkBuilder {
       const coauthorBais = new Map<string, string>(); // recid -> BAI
 
       this.graphState.beginBatch();
-      for (const pub of publications) {
+      for (const pub of publications.items) {
         for (const author of pub.metadata.authors) {
           if (!author.recid || author.recid === recid) continue;
 
@@ -124,30 +124,10 @@ export class NetworkBuilder {
           if (signal.aborted) return;
 
           try {
-            const pubs = await this.fetchAllPublicationsBatch(chunkBais, signal);
-            signal.throwIfAborted();
-            this.addCrossEdges(pubs);
+            failures += await this.fetchCoauthorConnections(chunkBais, signal);
           } catch (err) {
-            if ((err as Error).name === 'AbortError') return;
-            console.warn(
-              `Batch fetch failed for ${chunkBais.length} co-authors, falling back per-author:`,
-              err,
-            );
-            // Fallback: per-BAI within this chunk
-            await Promise.allSettled(
-              chunkBais.map(async (bai) => {
-                if (signal.aborted) return;
-                try {
-                  const pubs = await this.fetchAllPublications(bai, signal);
-                  signal.throwIfAborted();
-                  this.addCrossEdges(pubs);
-                } catch (err2) {
-                  if ((err2 as Error).name === 'AbortError') return;
-                  console.warn(`Failed to fetch publications for ${bai}:`, err2);
-                  failures++;
-                }
-              }),
-            );
+            if (signal.aborted) return;
+            throw err;
           }
 
           signal.throwIfAborted();
@@ -170,13 +150,15 @@ export class NetworkBuilder {
       await Promise.all([crossLinks, nameEnrichment]);
       signal.throwIfAborted();
 
-      const failureNote = failures > 0 ? ` (${failures} co-author${failures === 1 ? '' : 's'} failed to load — cross-links may be incomplete)` : '';
+      const notes: string[] = [];
+      if (!publications.complete) notes.push(`Root publications are incomplete (${publications.items.length}/${publications.total} retrieved).`);
+      if (failures > 0) notes.push(`Connections for ${failures} co-author${failures === 1 ? '' : 's'} are incomplete.`);
       onProgress({
         phase: 'done',
         totalCoauthors: total,
         completedCoauthors: total,
         fraction: 1,
-        message: `Done. ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections.${failureNote}`,
+        message: `${notes.length > 0 ? 'Partial network.' : 'Done.'} ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections. ${notes.join(' ')}`.trim(),
       });
     } catch (err) {
       if (signal.aborted || (err as Error).name === 'AbortError') return;
@@ -194,7 +176,7 @@ export class NetworkBuilder {
     bai: string,
     signal: AbortSignal,
     onPageProgress?: (completedPages: number, totalPages: number) => void,
-  ): Promise<InspirePubHit[]> {
+  ): Promise<PaginatedResult<InspirePubHit>> {
     return collectPaginated<InspirePubHit>(
       (page) =>
         fetchPublications(bai, page, signal).then((r) => ({
@@ -216,7 +198,7 @@ export class NetworkBuilder {
   private fetchAllPublicationsBatch(
     bais: string[],
     signal: AbortSignal,
-  ): Promise<InspirePubHit[]> {
+  ): Promise<PaginatedResult<InspirePubHit>> {
     return collectPaginated<InspirePubHit>(
       (page) =>
         fetchPublicationsBatch(bais, page, signal).then((r) => ({
@@ -225,6 +207,33 @@ export class NetworkBuilder {
         })),
       { pageSize: DEFAULT_PAGE_SIZE, maxWindow: MAX_RESULT_WINDOW, signal },
     );
+  }
+
+  /** Split oversized or failing queries until each author can be fetched independently. */
+  private async fetchCoauthorConnections(bais: string[], signal: AbortSignal): Promise<number> {
+    signal.throwIfAborted();
+    try {
+      const result = bais.length === 1
+        ? await this.fetchAllPublications(bais[0], signal)
+        : await this.fetchAllPublicationsBatch(bais, signal);
+      signal.throwIfAborted();
+      if (result.complete || bais.length === 1) {
+        this.addCrossEdges(result.items);
+        return result.complete ? 0 : 1;
+      }
+    } catch (err) {
+      signal.throwIfAborted();
+      if (bais.length === 1) {
+        console.warn(`Failed to fetch publications for ${bais[0]}:`, err);
+        return 1;
+      }
+    }
+    const middle = Math.ceil(bais.length / 2);
+    const failures = await Promise.all([
+      this.fetchCoauthorConnections(bais.slice(0, middle), signal),
+      this.fetchCoauthorConnections(bais.slice(middle), signal),
+    ]);
+    return failures[0] + failures[1];
   }
 
   private addCrossEdges(pubs: InspirePubHit[]): void {
@@ -289,6 +298,10 @@ export interface PaginatedPage<T> {
   total: number;
 }
 
+export interface PaginatedResult<T> extends PaginatedPage<T> {
+  complete: boolean;
+}
+
 /**
  * Collect every item across a paginated source. Stops when:
  *  - a page returns zero items (no forward progress — avoids an infinite loop
@@ -304,25 +317,28 @@ export async function collectPaginated<T>(
     signal?: AbortSignal;
     onPage?: (page: number, total: number) => void;
   },
-): Promise<T[]> {
+): Promise<PaginatedResult<T>> {
   const { pageSize, maxWindow, signal, onPage } = options;
   const all: T[] = [];
   let page = 1;
+  let total = 0;
 
   while (true) {
     signal?.throwIfAborted();
 
-    const { items, total } = await fetchPage(page);
+    const result = await fetchPage(page);
     signal?.throwIfAborted();
+    const items = result.items;
+    total = result.total;
     all.push(...items);
     onPage?.(page, total);
 
     if (items.length === 0) break;          // no progress — stop (avoids infinite loop)
     if (all.length >= total) break;          // collected everything
-    if (page * pageSize >= maxWindow) break; // hit the API result-window cap
+    if ((page + 1) * pageSize > maxWindow) break; // next page exceeds the result window
 
     page++;
   }
 
-  return all;
+  return { items: all, total, complete: all.length >= total };
 }

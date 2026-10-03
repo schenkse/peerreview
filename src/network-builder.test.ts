@@ -13,14 +13,14 @@ describe('collectPaginated', () => {
       pageSize: 3,
       maxWindow: 10000,
     });
-    expect(out).toEqual([1, 2, 3, 4, 5]);
+    expect(out).toEqual({ items: [1, 2, 3, 4, 5], total: 5, complete: true });
   });
 
   it('stops when a page returns zero items even if total claims more (no infinite loop)', async () => {
     const fetchPage = (page: number) =>
       Promise.resolve({ items: page === 1 ? [1, 2] : [], total: 100 });
     const out = await collectPaginated(fetchPage, { pageSize: 2, maxWindow: 10000 });
-    expect(out).toEqual([1, 2]);
+    expect(out).toEqual({ items: [1, 2], total: 100, complete: false });
   });
 
   it('stops at the result-window cap', async () => {
@@ -32,7 +32,7 @@ describe('collectPaginated', () => {
     const out = await collectPaginated(fetchPage, { pageSize: 250, maxWindow: 1000 });
     // pageSize 250, window 1000 => stop after page 4 (4*250 = 1000)
     expect(calls).toBe(4);
-    expect(out).toEqual([1, 2, 3, 4]);
+    expect(out).toEqual({ items: [1, 2, 3, 4], total: 1_000_000, complete: false });
   });
 
   it('invokes onPage with the page index and total', async () => {
