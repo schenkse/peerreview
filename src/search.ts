@@ -42,6 +42,7 @@ export class SearchUI {
   private onInput(): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     if (this.abortController) this.abortController.abort();
+    this.hideDropdown();
 
     const query = this.input.value.trim();
     if (query.length < 2) {
@@ -54,12 +55,14 @@ export class SearchUI {
 
   private async search(query: string): Promise<void> {
     this.abortController = new AbortController();
+    const signal = this.abortController.signal;
 
     try {
-      const result = await searchAuthors(query, this.abortController.signal);
+      const result = await searchAuthors(query, signal);
+      signal.throwIfAborted();
       this.renderDropdown(result.hits.hits);
     } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
+      if (signal.aborted || (err as Error).name === 'AbortError') return;
       console.error('Search failed:', err);
       this.hideDropdown();
     }
@@ -88,6 +91,8 @@ export class SearchUI {
       `;
 
       item.addEventListener('click', () => {
+        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+        this.abortController?.abort();
         this.input.value = name;
         this.hideDropdown();
         this.onAuthorSelected(bai, name, author.metadata.control_number);

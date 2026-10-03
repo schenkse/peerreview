@@ -6,6 +6,7 @@ import type { InspireAuthorHit, InspirePubHit, InspireSearchResponse } from './t
 const responseCache = new TtlCache<unknown>();
 
 async function request<T>(url: string, signal?: AbortSignal): Promise<InspireSearchResponse<T>> {
+  signal?.throwIfAborted();
   const cached = responseCache.get(url) as InspireSearchResponse<T> | undefined;
   if (cached) return cached;
 
@@ -14,6 +15,7 @@ async function request<T>(url: string, signal?: AbortSignal): Promise<InspireSea
     throw new Error(`API request failed: ${res.status} ${res.statusText}`);
   }
   const data = (await res.json()) as InspireSearchResponse<T>;
+  signal?.throwIfAborted();
   responseCache.set(url, data);
   return data;
 }

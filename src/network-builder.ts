@@ -64,6 +64,7 @@ export class NetworkBuilder {
           });
         },
       );
+      signal.throwIfAborted();
 
       // Process publications and build initial network
       const coauthorBais = new Map<string, string>(); // recid -> BAI
@@ -124,6 +125,7 @@ export class NetworkBuilder {
 
           try {
             const pubs = await this.fetchAllPublicationsBatch(chunkBais, signal);
+            signal.throwIfAborted();
             this.addCrossEdges(pubs);
           } catch (err) {
             if ((err as Error).name === 'AbortError') return;
@@ -137,6 +139,7 @@ export class NetworkBuilder {
                 if (signal.aborted) return;
                 try {
                   const pubs = await this.fetchAllPublications(bai, signal);
+                  signal.throwIfAborted();
                   this.addCrossEdges(pubs);
                 } catch (err2) {
                   if ((err2 as Error).name === 'AbortError') return;
@@ -147,6 +150,7 @@ export class NetworkBuilder {
             );
           }
 
+          signal.throwIfAborted();
           completedChunks++;
           const done = Math.min(total, completedChunks * COAUTHOR_BATCH_CHUNK_SIZE);
           onProgress({
@@ -164,6 +168,7 @@ export class NetworkBuilder {
       const nameEnrichment = this.enrichAuthorNames(coauthorRecids, signal);
 
       await Promise.all([crossLinks, nameEnrichment]);
+      signal.throwIfAborted();
 
       const failureNote = failures > 0 ? ` (${failures} co-author${failures === 1 ? '' : 's'} failed to load — cross-links may be incomplete)` : '';
       onProgress({
@@ -174,7 +179,7 @@ export class NetworkBuilder {
         message: `Done. ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections.${failureNote}`,
       });
     } catch (err) {
-      if ((err as Error).name === 'AbortError') return;
+      if (signal.aborted || (err as Error).name === 'AbortError') return;
 
       onProgress({
         phase: 'error',
@@ -251,6 +256,7 @@ export class NetworkBuilder {
         if (signal.aborted) return;
         try {
           const result = await fetchAuthorProfiles(chunkRecids, signal);
+          signal.throwIfAborted();
           this.graphState.beginBatch();
           for (const hit of result.hits.hits) {
             const recid = hit.metadata.control_number;
@@ -304,9 +310,10 @@ export async function collectPaginated<T>(
   let page = 1;
 
   while (true) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    signal?.throwIfAborted();
 
     const { items, total } = await fetchPage(page);
+    signal?.throwIfAborted();
     all.push(...items);
     onPage?.(page, total);
 
