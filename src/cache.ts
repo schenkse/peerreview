@@ -5,13 +5,14 @@ interface CacheEntry<V> {
   expiresAt: number;
 }
 
-/** A minimal time-to-live cache. Entries expire lazily on read. */
+/** A bounded TTL cache. Expired entries are removed on reads and insertions. */
 export class TtlCache<V> {
   private store = new Map<string, CacheEntry<V>>();
 
   constructor(
     private ttlMs: number = CACHE_TTL_MS,
     private now: () => number = Date.now,
+    private maxEntries = 128,
   ) {}
 
   get(key: string): V | undefined {
@@ -25,7 +26,16 @@ export class TtlCache<V> {
   }
 
   set(key: string, value: V): void {
-    this.store.set(key, { value, expiresAt: this.now() + this.ttlMs });
+    if (this.maxEntries <= 0) return;
+    const now = this.now();
+    for (const [storedKey, entry] of this.store) {
+      if (now >= entry.expiresAt) this.store.delete(storedKey);
+    }
+    this.store.delete(key);
+    if (this.store.size >= this.maxEntries) {
+      this.store.delete(this.store.keys().next().value!);
+    }
+    this.store.set(key, { value, expiresAt: now + this.ttlMs });
   }
 
   clear(): void {
