@@ -53,8 +53,8 @@ export class NetworkBuilder {
 
       const coauthorBais = new Map<string, string>(); // recid -> BAI
       const seenPapers = new Set<string>();
-      const publications = await this.fetchAllPublications(
-        bai,
+      const publications = await this.fetchPublicationPages(
+        [bai],
         signal,
         pubs => this.addRootPublications(pubs, recid, coauthorBais, seenPapers),
         (completedPages, totalPages) => {
@@ -173,15 +173,16 @@ export class NetworkBuilder {
     }
   }
 
-  private fetchAllPublications(
-    bai: string,
+  private fetchPublicationPages(
+    bais: string[],
     signal: AbortSignal,
     onItems: (pubs: InspirePubHit[]) => void,
     onPageProgress?: (completedPages: number, totalPages: number) => void,
   ): Promise<PaginationResult> {
     return visitPaginated<InspirePubHit>(
-      (page) =>
-        fetchPublications(bai, page, signal).then((r) => ({
+      (page) => (bais.length === 1
+        ? fetchPublications(bais[0], page, signal)
+        : fetchPublicationsBatch(bais, page, signal)).then((r) => ({
           items: r.hits.hits,
           total: r.hits.total,
         })),
@@ -190,6 +191,7 @@ export class NetworkBuilder {
         maxWindow: MAX_RESULT_WINDOW,
         signal,
         onItems,
+        stopOnOverflow: bais.length > 1,
         onPage: onPageProgress
           ? (page, total) =>
               onPageProgress(page, Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE)))
@@ -198,28 +200,11 @@ export class NetworkBuilder {
     );
   }
 
-  private fetchAllPublicationsBatch(
-    bais: string[],
-    signal: AbortSignal,
-    onItems: (pubs: InspirePubHit[]) => void,
-  ): Promise<PaginationResult> {
-    return visitPaginated<InspirePubHit>(
-      (page) =>
-        fetchPublicationsBatch(bais, page, signal).then((r) => ({
-          items: r.hits.hits,
-          total: r.hits.total,
-        })),
-      { pageSize: DEFAULT_PAGE_SIZE, maxWindow: MAX_RESULT_WINDOW, signal, onItems },
-    );
-  }
-
   /** Split oversized or failing queries until each author can be fetched independently. */
   private async fetchCoauthorConnections(bais: string[], signal: AbortSignal, seenPapers: Set<string>): Promise<number> {
     signal.throwIfAborted();
     try {
-      const result = bais.length === 1
-        ? await this.fetchAllPublications(bais[0], signal, pubs => this.addCrossEdges(pubs, seenPapers))
-        : await this.fetchAllPublicationsBatch(bais, signal, pubs => this.addCrossEdges(pubs, seenPapers));
+      const result = await this.fetchPublicationPages(bais, signal, pubs => this.addCrossEdges(pubs, seenPapers));
       signal.throwIfAborted();
       if (result.complete || bais.length === 1) {
         return result.complete ? 0 : 1;
@@ -326,6 +311,7 @@ export async function visitPaginated<T>(
     pageSize: number;
     maxWindow: number;
     signal?: AbortSignal;
+    stopOnOverflow?: boolean;
     onItems?: (items: T[]) => void;
     onPage?: (page: number, total: number) => void;
   },
@@ -342,6 +328,8 @@ export async function visitPaginated<T>(
     signal?.throwIfAborted();
     const items = result.items;
     total = result.total;
+    // A disjunctive query can be split before downloading its remaining pages.
+    if (options.stopOnOverflow && total > maxWindow) break;
     count += items.length;
     onItems?.(items);
     signal?.throwIfAborted();

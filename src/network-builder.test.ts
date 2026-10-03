@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { visitPaginated } from './network-builder';
 
 function pagesFetcher(pages: number[][], total: number) {
@@ -8,6 +8,14 @@ function pagesFetcher(pages: number[][], total: number) {
 }
 
 describe('visitPaginated', () => {
+  it('stops oversized batch queries after the first page without processing them', async () => {
+    const fetchPage = vi.fn().mockResolvedValue({ items: [1, 2, 3], total: 10001 });
+    const onItems = vi.fn();
+    const result = await visitPaginated(fetchPage, { pageSize: 250, maxWindow: 10000, stopOnOverflow: true, onItems });
+    expect(result).toEqual({ count: 0, total: 10001, complete: false });
+    expect(fetchPage).toHaveBeenCalledOnce();
+    expect(onItems).not.toHaveBeenCalled();
+  });
   it('visits all items across pages and stops at total', async () => {
     const items: number[] = [];
     const out = await visitPaginated(pagesFetcher([[1, 2, 3], [4, 5]], 5), {
