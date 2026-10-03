@@ -97,19 +97,25 @@ export class NetworkBuilder {
       }
       this.graphState.endBatch();
 
-      // Phase 3: cross-links via chunked disjunctive queries,
-      // and canonical-name enrichment, in parallel.
-      const coauthorEntries = Array.from(coauthorBais.entries()); // [recidStr, bai][]
-      const coauthorRecids = coauthorEntries.map(([id]) => Number(id));
-      const total = coauthorEntries.length;
+      // Profiles provide canonical names and identifiers absent from publication metadata.
+      const coauthorRecids = this.graphState.getNodes().filter(node => !node.isRoot).map(node => node.recid);
+      const total = coauthorRecids.length;
+      onProgress({
+        phase: 'fetching-coauthors', totalCoauthors: total, completedCoauthors: 0,
+        fraction: ROOT_PHASE_WEIGHT, message: `Fetching profiles for ${total} co-authors...`,
+      });
+      await this.enrichAuthorNames(coauthorRecids, coauthorBais, signal);
+      signal.throwIfAborted();
 
       const baiChunks = chunk(
-        coauthorEntries.map(([, bai]) => bai),
+        Array.from(coauthorBais.values()),
         COAUTHOR_BATCH_CHUNK_SIZE,
       );
       const totalChunks = baiChunks.length;
       let completedChunks = 0;
-      let failures = 0;
+      const unresolved = total - coauthorBais.size;
+      let failures = unresolved;
+      let completedCoauthors = unresolved;
 
       onProgress({
         phase: 'fetching-coauthors',
@@ -119,7 +125,7 @@ export class NetworkBuilder {
         message: `Fetching co-author connections... 0/${total}`,
       });
 
-      const crossLinks = Promise.allSettled(
+      const crossLinks = Promise.all(
         baiChunks.map(async (chunkBais) => {
           if (signal.aborted) return;
 
@@ -132,7 +138,8 @@ export class NetworkBuilder {
 
           signal.throwIfAborted();
           completedChunks++;
-          const done = Math.min(total, completedChunks * COAUTHOR_BATCH_CHUNK_SIZE);
+          completedCoauthors += chunkBais.length;
+          const done = completedCoauthors;
           onProgress({
             phase: 'fetching-coauthors',
             totalCoauthors: total,
@@ -145,9 +152,7 @@ export class NetworkBuilder {
         }),
       );
 
-      const nameEnrichment = this.enrichAuthorNames(coauthorRecids, signal);
-
-      await Promise.all([crossLinks, nameEnrichment]);
+      await crossLinks;
       signal.throwIfAborted();
 
       const notes: string[] = [];
@@ -255,6 +260,7 @@ export class NetworkBuilder {
 
   private async enrichAuthorNames(
     recids: number[],
+    coauthorBais: Map<string, string>,
     signal: AbortSignal,
   ): Promise<void> {
     if (recids.length === 0) return;
@@ -272,6 +278,12 @@ export class NetworkBuilder {
             const name = hit.metadata.name.preferred_name ?? hit.metadata.name.value;
             if (recid && name) {
               this.graphState.updateNodeName(String(recid), name);
+              const bai = hit.metadata.ids?.find(id => id.schema === 'INSPIRE BAI')?.value;
+              if (bai) {
+                coauthorBais.set(String(recid), bai);
+                const node = this.graphState.getNode(String(recid));
+                if (node) node.bai = bai;
+              }
             }
           }
           this.graphState.endBatch();

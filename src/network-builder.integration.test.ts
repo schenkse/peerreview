@@ -57,8 +57,57 @@ describe('NetworkBuilder cancellation', () => {
   it('does not emit done or mutate the graph when cancelled cross-links and profiles finish', async () => {
     vi.mocked(fetchPublications).mockResolvedValueOnce(response([paper('root', [author(1), author(2), author(3)])]));
     const batch = deferred<InspireSearchResponse<InspirePubHit>>();
-    const profiles = deferred<InspireSearchResponse<never>>();
     vi.mocked(fetchPublicationsBatch).mockReturnValueOnce(batch.promise);
+    const graph = new GraphState();
+    const builder = new NetworkBuilder(graph);
+    const progress = vi.fn();
+    const pending = builder.build('Author.1', 'Root', 1, progress);
+    await vi.waitFor(() => expect(fetchPublicationsBatch).toHaveBeenCalled());
+    builder.cancel();
+    graph.clear();
+    batch.resolve(response([paper('late', [author(1), author(2)])]));
+    await pending;
+    expect(graph.nodeCount).toBe(0);
+    expect(graph.edgeCount).toBe(0);
+    expect(progress.mock.calls.some(([p]) => p.phase === 'done' || p.phase === 'error')).toBe(false);
+  });
+});
+
+describe('NetworkBuilder author profiles', () => {
+  it('recovers missing publication identifiers and enriches every coauthor', async () => {
+    vi.mocked(fetchPublications).mockImplementation(async bai => response([
+      bai === 'Author.1'
+        ? paper('root', [{ recid: 1, full_name: 'Root' }, { recid: 2, full_name: 'Initial name' }])
+        : paper('cross', [author(1), author(2)]),
+    ]));
+    vi.mocked(fetchAuthorProfiles).mockResolvedValue(response([{
+      id: '2', metadata: { control_number: 2, name: { value: 'Canonical name' },
+        ids: [{ schema: 'INSPIRE BAI', value: 'Recovered.2' }] },
+    }]));
+    const graph = new GraphState();
+    const progress = vi.fn();
+    await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
+    expect(fetchAuthorProfiles).toHaveBeenCalledWith([2], expect.any(AbortSignal));
+    expect(fetchPublications).toHaveBeenCalledWith('Recovered.2', 1, expect.any(AbortSignal));
+    expect(graph.getNode('2')).toMatchObject({ name: 'Canonical name', bai: 'Recovered.2' });
+    expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
+  });
+
+  it('reports coauthors whose identifiers cannot be recovered', async () => {
+    vi.mocked(fetchPublications).mockResolvedValue(response([
+      paper('root', [{ recid: 1, full_name: 'Root' }, { recid: 2, full_name: 'Unknown BAI' }]),
+    ]));
+    const progress = vi.fn();
+    const graph = new GraphState();
+    await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
+    expect(fetchAuthorProfiles).toHaveBeenCalledWith([2], expect.any(AbortSignal));
+    expect(graph.nodeCount).toBe(2);
+    expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({totalCoauthors: 1});
+    expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 1 co-author are incomplete');
+  });
+
+  it('ignores profiles that finish after cancellation', async () => {
+    const profiles = deferred<InspireSearchResponse<never>>();
     vi.mocked(fetchAuthorProfiles).mockReturnValueOnce(profiles.promise);
     const graph = new GraphState();
     const builder = new NetworkBuilder(graph);
@@ -67,12 +116,11 @@ describe('NetworkBuilder cancellation', () => {
     await vi.waitFor(() => expect(fetchAuthorProfiles).toHaveBeenCalled());
     builder.cancel();
     graph.clear();
-    batch.resolve(response([paper('late', [author(1), author(2)])]));
     profiles.resolve(response([]));
     await pending;
     expect(graph.nodeCount).toBe(0);
-    expect(graph.edgeCount).toBe(0);
-    expect(progress.mock.calls.some(([p]) => p.phase === 'done' || p.phase === 'error')).toBe(false);
+    expect(fetchPublicationsBatch).not.toHaveBeenCalled();
+    expect(progress.mock.calls.some(([p]) => p.phase === 'done')).toBe(false);
   });
 });
 
