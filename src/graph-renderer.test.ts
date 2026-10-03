@@ -37,6 +37,12 @@ afterEach(() => {
 });
 
 describe('GraphRenderer appearance updates', () => {
+  it('renders a standalone root immediately after an unbatched insertion', () => {
+    graph.clear();
+    graph.addNode({ id: '3', recid: 3, name: 'Solo author', isRoot: true });
+    expect(document.querySelectorAll('.node')).toHaveLength(1);
+    expect(document.querySelector('.label')?.textContent).toBe('Solo author');
+  });
   it('updates theme colors without restarting the simulation', () => {
     const restart = vi.spyOn(simulation, 'restart');
     const container = document.getElementById('graph')!;

@@ -22,21 +22,21 @@ describe('GraphState nodes', () => {
     expect(s.nodeCount).toBe(1);
   });
 
-  it('updateNodeName changes the name and emits node-updated', () => {
+  it('updateNodeName changes the name without requesting a layout update', () => {
     const s = new GraphState();
     s.addNode(node('1'));
     const seen: unknown[] = [];
-    s.on('node-updated', (p) => seen.push(p));
+    s.on('changed', (p) => seen.push(p));
     s.updateNodeName('1', 'New Name');
     expect(s.getNode('1')?.name).toBe('New Name');
-    expect(seen).toHaveLength(1);
+    expect(seen).toEqual([{ layoutChanged: false }]);
   });
 
   it('updateNodeName is a no-op when the name is unchanged', () => {
     const s = new GraphState();
     s.addNode(node('1'));
     const seen: unknown[] = [];
-    s.on('node-updated', (p) => seen.push(p));
+    s.on('changed', (p) => seen.push(p));
     s.updateNodeName('1', 'Author 1');
     expect(seen).toHaveLength(0);
   });
@@ -83,24 +83,22 @@ describe('GraphState edges', () => {
 });
 
 describe('GraphState batching', () => {
-  it('suppresses individual events during a batch and emits one batch-complete', () => {
+  it('emits one layout change for a batch of mutations', () => {
     const s = new GraphState();
-    const individual: unknown[] = [];
     const batches: unknown[] = [];
-    s.on('node-added', (p) => individual.push(p));
-    s.on('batch-complete', (p) => batches.push(p));
+    s.on('changed', (p) => batches.push(p));
     s.beginBatch();
     s.addNode(node('1'));
     s.addNode(node('2'));
+    expect(batches).toHaveLength(0);
     s.endBatch();
-    expect(individual).toHaveLength(0);
-    expect(batches).toHaveLength(1);
+    expect(batches).toEqual([{ layoutChanged: true }]);
   });
 
-  it('does not emit batch-complete when nothing changed', () => {
+  it('does not emit a change when nothing changed', () => {
     const s = new GraphState();
     const batches: unknown[] = [];
-    s.on('batch-complete', (p) => batches.push(p));
+    s.on('changed', (p) => batches.push(p));
     s.beginBatch();
     s.endBatch();
     expect(batches).toHaveLength(0);
@@ -109,7 +107,7 @@ describe('GraphState batching', () => {
   it('handles nested batches, emitting once at depth 0', () => {
     const s = new GraphState();
     const batches: unknown[] = [];
-    s.on('batch-complete', () => batches.push(1));
+    s.on('changed', () => batches.push(1));
     s.beginBatch();
     s.beginBatch();
     s.addNode(node('1'));

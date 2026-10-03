@@ -78,4 +78,4 @@ export interface GraphChange {
   layoutChanged: boolean;
 }
 
-export type GraphEvent = 'node-added' | 'node-updated' | 'edge-added' | 'edge-updated' | 'batch-complete' | 'cleared';
+export type GraphEvent = 'changed' | 'cleared';

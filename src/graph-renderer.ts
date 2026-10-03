@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import type { AuthorNode, CoauthorEdge, GraphChange } from './types';
+import type { AuthorNode, CoauthorEdge } from './types';
 import type { GraphState } from './graph-state';
 import { setupHover, clearHighlight } from './hover';
 
@@ -106,8 +106,8 @@ export class GraphRenderer {
       .on('tick', () => this.ticked());
 
     // Label edits do not change forces or node positions.
-    graphState.on('batch-complete', (change) => {
-      if ((change as GraphChange).layoutChanged) this.updateSimulation();
+    graphState.on('changed', (change) => {
+      if (change.layoutChanged) this.updateSimulation();
       else this.refreshLabels();
     });
     graphState.on('cleared', () => this.reset());

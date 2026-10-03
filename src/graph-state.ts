@@ -1,6 +1,6 @@
-import type { AuthorNode, CoauthorEdge, GraphEvent } from './types';
+import type { AuthorNode, CoauthorEdge, GraphChange, GraphEvent } from './types';
 
-type Listener = (payload: unknown) => void;
+type Listener = (change: GraphChange) => void;
 
 export class GraphState {
   private nodes = new Map<string, AuthorNode>();
@@ -46,7 +46,7 @@ export class GraphState {
   addNode(node: AuthorNode): boolean {
     if (this.nodes.has(node.id)) return false;
     this.nodes.set(node.id, node);
-    this.emitOrBatch('node-added', node);
+    this.emitOrBatch(true);
     return true;
   }
 
@@ -54,7 +54,7 @@ export class GraphState {
     const node = this.nodes.get(id);
     if (!node || node.name === name) return;
     node.name = name;
-    this.emitOrBatch('node-updated', node);
+    this.emitOrBatch(false);
   }
 
   addOrUpdateEdge(sourceId: string, targetId: string, paperId: string): void {
@@ -67,7 +67,7 @@ export class GraphState {
       if (!existing.paperIds.has(paperId)) {
         existing.paperIds.add(paperId);
         existing.weight = existing.paperIds.size;
-        this.emitOrBatch('edge-updated', existing);
+        this.emitOrBatch(true);
       }
     } else {
       const edge: CoauthorEdge = {
@@ -83,7 +83,7 @@ export class GraphState {
       this.adjacency.get(sourceId)!.add(targetId);
       this.adjacency.get(targetId)!.add(sourceId);
 
-      this.emitOrBatch('edge-added', edge);
+      this.emitOrBatch(true);
     }
   }
 
@@ -94,7 +94,7 @@ export class GraphState {
     this.batchDepth = 0;
     this.batchDirty = false;
     this.batchLayoutChanged = false;
-    this.emit('cleared', null);
+    this.emit('cleared', { layoutChanged: true });
   }
 
   // --- Batch support ---
@@ -111,7 +111,7 @@ export class GraphState {
     this.batchDepth--;
     if (this.batchDepth === 0 && this.batchDirty) {
       this.batchDirty = false;
-      this.emit('batch-complete', { layoutChanged: this.batchLayoutChanged });
+      this.emit('changed', { layoutChanged: this.batchLayoutChanged });
     }
   }
 
@@ -128,19 +128,19 @@ export class GraphState {
     this.listeners.get(event)?.delete(callback);
   }
 
-  private emit(event: GraphEvent, payload: unknown): void {
+  private emit(event: GraphEvent, change: GraphChange): void {
     const callbacks = this.listeners.get(event);
     if (callbacks) {
-      for (const cb of callbacks) cb(payload);
+      for (const cb of callbacks) cb(change);
     }
   }
 
-  private emitOrBatch(event: GraphEvent, payload: unknown): void {
+  private emitOrBatch(layoutChanged: boolean): void {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
-      this.batchLayoutChanged ||= event !== 'node-updated';
+      this.batchLayoutChanged ||= layoutChanged;
     } else {
-      this.emit(event, payload);
+      this.emit('changed', { layoutChanged });
     }
   }
 
