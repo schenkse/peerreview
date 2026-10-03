@@ -4,6 +4,7 @@ export class ProgressIndicator {
   private bar: HTMLDivElement;
   private text: HTMLSpanElement;
   private fill: HTMLDivElement;
+  private hideTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private container: HTMLElement,
@@ -28,6 +29,7 @@ export class ProgressIndicator {
   }
 
   update(progress: NetworkProgress): void {
+    this.clearHideTimer();
     this.container.classList.add('visible');
     this.text.textContent = progress.message;
 
@@ -38,19 +40,26 @@ export class ProgressIndicator {
     } else if (progress.phase === 'done' || progress.phase === 'error') {
       this.fill.style.width = '100%';
       if (progress.phase === 'done') {
-        setTimeout(() => this.hide(), this.hideDelayMs);
+        this.hideTimer = setTimeout(() => this.hide(), this.hideDelayMs);
       }
     }
   }
 
   show(): void {
+    this.clearHideTimer();
     this.container.classList.add('visible');
   }
 
   hide(): void {
+    this.clearHideTimer();
     this.container.classList.remove('visible');
     this.bar.classList.remove('visible');
     this.fill.style.width = '0%';
     this.text.textContent = '';
+  }
+
+  private clearHideTimer(): void {
+    if (this.hideTimer !== null) clearTimeout(this.hideTimer);
+    this.hideTimer = null;
   }
 }
