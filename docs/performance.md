@@ -33,3 +33,21 @@ allows 20 pages within the result window. Parsing and processing costs are
 similar in this fixture. Larger pages increase the number of records retained
 by the existing cache; its entry and TTL limits remain unchanged. Real payloads,
 root metadata, browser heaps, and API latency will differ from this fixture.
+
+# Rendering probe
+
+The DOM probe in `src/graph-renderer.test.ts` builds a chain of 500 authors and
+499 edges, stops the simulation, then calls the renderer's tick handler. It
+counts selector calls and SVG attribute writes. Reproduce with:
+
+```sh
+npm test -- src/graph-renderer.test.ts
+```
+
+With no highlight, one tick writes 499 edge paths, 500 pairs of node coordinates,
+and nine label transforms: the root and eight permanent labels. It calls neither
+`querySelector` nor `querySelectorAll` on elements or the document. Hidden labels
+receive no transforms. Separate mouse and touch probes reveal author 500's label
+by selecting author 499, verify its current position before another tick, then
+verify it follows ticks only while visible. These checks use jsdom and establish
+DOM work counts, not browser frame rates.

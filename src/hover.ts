@@ -10,6 +10,7 @@ export class HoverController {
   constructor(
     private graphState: GraphState,
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+    private onHighlight: (connectedIds: ReadonlySet<string>) => void = () => {},
   ) {
     svg.on('click', () => this.clear());
   }
@@ -56,6 +57,8 @@ export class HoverController {
       .classed('highlighted', connectedEdge)
       .classed('dimmed', edge => !connectedEdge(edge));
 
+    // Position labels before the highlighted class reveals them.
+    this.onHighlight(connectedIds);
     this.svg.selectAll<SVGGElement, AuthorNode>('.label-group')
       .classed('highlighted', d => connectedIds.has(d.id))
       .classed('dimmed', d => !connectedIds.has(d.id));
@@ -68,5 +71,6 @@ export class HoverController {
       .classed('highlighted', false)
       .classed('dimmed', false);
     this.svg.selectAll('.node').classed('pulse', false);
+    this.onHighlight(new Set());
   }
 }

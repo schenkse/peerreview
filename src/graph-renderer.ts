@@ -14,6 +14,13 @@ export class GraphRenderer {
   private linkGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private nodeGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private labelGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
+  private links: d3.Selection<SVGPathElement, CoauthorEdge, SVGGElement, unknown>;
+  private nodes: d3.Selection<SVGCircleElement, AuthorNode, SVGGElement, unknown>;
+  private labels: d3.Selection<SVGGElement, AuthorNode, SVGGElement, unknown>;
+  private labelText: d3.Selection<SVGTextElement, AuthorNode, SVGGElement, unknown>;
+  private visibleLabels: d3.Selection<SVGGElement, AuthorNode, SVGGElement, unknown>;
+  private permanentLabelIds = new Set<string>();
+  private labelOffsets = new Map<string, number>();
   private hover: HoverController;
   private simulation: d3.Simulation<AuthorNode, CoauthorEdge>;
   private zoom!: d3.ZoomBehavior<SVGSVGElement, unknown>;
@@ -53,6 +60,11 @@ export class GraphRenderer {
     this.linkGroup = this.g.append('g').attr('class', 'links');
     this.nodeGroup = this.g.append('g').attr('class', 'nodes');
     this.labelGroup = this.g.append('g').attr('class', 'labels');
+    this.links = this.linkGroup.selectAll<SVGPathElement, CoauthorEdge>('path');
+    this.nodes = this.nodeGroup.selectAll<SVGCircleElement, AuthorNode>('circle');
+    this.labels = this.labelGroup.selectAll<SVGGElement, AuthorNode>('g.label-group');
+    this.labelText = this.labels.select<SVGTextElement>('text.label');
+    this.visibleLabels = this.labels;
 
     // Zoom and pan
     this.zoom = d3
@@ -64,7 +76,7 @@ export class GraphRenderer {
     this.svg.call(this.zoom);
 
     // On touch devices, tapping the graph background clears any locked highlight
-    this.hover = new HoverController(graphState, this.svg);
+    this.hover = new HoverController(graphState, this.svg, ids => this.refreshVisibleLabels(ids));
 
     // Force simulation
     this.simulation = d3
@@ -118,9 +130,16 @@ export class GraphRenderer {
 
   reset(): void {
     this.hover.clear();
-    this.linkGroup.selectAll('*').remove();
-    this.nodeGroup.selectAll('*').remove();
-    this.labelGroup.selectAll('*').remove();
+    this.links.remove();
+    this.nodes.remove();
+    this.labels.remove();
+    this.links = this.links.filter(() => false);
+    this.nodes = this.nodes.filter(() => false);
+    this.labels = this.labels.filter(() => false);
+    this.labelText = this.labels.select<SVGTextElement>('text.label');
+    this.visibleLabels = this.labels;
+    this.labelOffsets.clear();
+    this.permanentLabelIds.clear();
     this.linkStrengths.clear();
     this.simulation.nodes([]);
     (this.simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>).links([]);
@@ -137,13 +156,11 @@ export class GraphRenderer {
       if (id !== rootId) maxDegree = Math.max(maxDegree, degree);
     }
     const colorScale = d3.scaleSequential(d3.interpolate(lowColor, highColor)).domain([0, maxDegree]);
-    this.nodeGroup.selectAll<SVGCircleElement, AuthorNode>('circle')
-      .style('fill', d => d.isRoot ? 'var(--node-root)' : colorScale(this.degreeMap.get(d.id) ?? 0));
+    this.nodes.style('fill', d => d.isRoot ? 'var(--node-root)' : colorScale(this.degreeMap.get(d.id) ?? 0));
   }
 
   private refreshLabels(): void {
-    this.labelGroup.selectAll<SVGGElement, AuthorNode>('g.label-group')
-      .select<SVGTextElement>('text.label').text(d => d.name);
+    this.labelText.text(d => d.name);
   }
 
   // Ids of nodes whose labels stay visible without hovering.
@@ -206,9 +223,8 @@ export class GraphRenderer {
       .append('path')
       .attr('class', 'edge');
 
-    linkSel
-      .merge(linkEnter)
-      .attr('stroke-width', (d) => Math.sqrt(d.weight) * 1.25);
+    this.links = linkSel.merge(linkEnter);
+    this.links.attr('stroke-width', d => Math.sqrt(d.weight) * 1.25);
 
     // --- Nodes ---
     const nodeSel = this.nodeGroup
@@ -229,7 +245,8 @@ export class GraphRenderer {
       this.hover.attach(nodes[i] as SVGCircleElement, d);
     });
 
-    nodeSel.merge(nodeEnter).attr('r', (d) => this.nodeRadius(d));
+    this.nodes = nodeSel.merge(nodeEnter);
+    this.nodes.attr('r', d => this.nodeRadius(d));
     this.refreshColors();
 
     // --- Labels ---
@@ -250,8 +267,11 @@ export class GraphRenderer {
       .attr('x', 0).attr('dy', '0.35em')
       .attr('text-anchor', 'middle');
 
-    const labelled = this.labelledIds(nodes);
-    labelSel.merge(labelEnter).classed('minor', (d) => !labelled.has(d.id));
+    this.permanentLabelIds = this.labelledIds(nodes);
+    this.labelOffsets = new Map(nodes.map(node => [node.id, this.nodeRadius(node) + 9]));
+    this.labels = labelSel.merge(labelEnter);
+    this.labelText = this.labels.select<SVGTextElement>('text.label');
+    this.labels.classed('minor', d => !this.permanentLabelIds.has(d.id));
     this.refreshLabels();
 
     this.hover.refresh();
@@ -261,8 +281,7 @@ export class GraphRenderer {
   }
 
   private updateWeights(): void {
-    this.linkGroup.selectAll<SVGPathElement, CoauthorEdge>('path')
-      .attr('stroke-width', edge => Math.sqrt(edge.weight) * 1.25);
+    this.links.attr('stroke-width', edge => Math.sqrt(edge.weight) * 1.25);
     let strengthChanged = false;
     for (const [edge, previous] of this.linkStrengths) {
       const strength = Math.min(edge.weight * 0.1, 1);
@@ -279,9 +298,7 @@ export class GraphRenderer {
   }
 
   private ticked(): void {
-    this.linkGroup
-      .selectAll<SVGPathElement, CoauthorEdge>('path')
-      .attr('d', (d) => {
+    this.links.attr('d', (d) => {
         const sx = (d.source as AuthorNode).x ?? 0;
         const sy = (d.source as AuthorNode).y ?? 0;
         const tx = (d.target as AuthorNode).x ?? 0;
@@ -295,14 +312,20 @@ export class GraphRenderer {
         return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
       });
 
-    this.nodeGroup
-      .selectAll<SVGCircleElement, AuthorNode>('circle')
-      .attr('cx', (d) => d.x ?? 0)
+    this.nodes.attr('cx', (d) => d.x ?? 0)
       .attr('cy', (d) => d.y ?? 0);
 
-    this.labelGroup
-      .selectAll<SVGGElement, AuthorNode>('g.label-group')
-      .attr('transform', (d) => `translate(${d.x ?? 0}, ${(d.y ?? 0) + this.nodeRadius(d) + 9})`);
+    this.positionLabels();
+  }
+
+  private refreshVisibleLabels(highlightedIds: ReadonlySet<string>): void {
+    this.visibleLabels = this.labels.filter(d => this.permanentLabelIds.has(d.id) || highlightedIds.has(d.id));
+    this.positionLabels();
+  }
+
+  private positionLabels(): void {
+    this.visibleLabels.attr('transform', d =>
+      `translate(${d.x ?? 0}, ${(d.y ?? 0) + (this.labelOffsets.get(d.id) ?? 0)})`);
   }
 
   private dragBehavior(): d3.DragBehavior<SVGCircleElement, AuthorNode, AuthorNode | d3.SubjectPosition> {

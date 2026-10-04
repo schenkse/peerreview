@@ -159,3 +159,56 @@ it.each([false, true])('refreshes active highlights as topology grows, touch=%s'
   graph.addNode({ id: '1', recid: 1, name: 'Next root', isRoot: true });
   expect(document.querySelectorAll('.highlighted, .dimmed, .pulse')).toHaveLength(0);
 });
+
+
+function largeGraph() {
+  graph.clear();
+  graph.beginBatch();
+  for (let i = 1; i <= 500; i++) {
+    graph.addNode({ id: String(i), recid: i, name: `Author ${i}`, isRoot: i === 1 });
+    if (i > 1) graph.addOrUpdateEdge(String(i - 1), String(i));
+  }
+  graph.endBatch();
+  simulation.stop().alpha(0);
+}
+
+it('ticks 500 nodes without selector queries and moves only nine permanent labels', () => {
+  largeGraph();
+  const elementQuery = vi.spyOn(Element.prototype, 'querySelector');
+  const elementQueryAll = vi.spyOn(Element.prototype, 'querySelectorAll');
+  const documentQuery = vi.spyOn(document, 'querySelector');
+  const documentQueryAll = vi.spyOn(document, 'querySelectorAll');
+  const attributes = vi.spyOn(SVGElement.prototype, 'setAttribute');
+  simulation.on('tick')!.call(simulation);
+  expect(elementQuery).not.toHaveBeenCalled();
+  expect(elementQueryAll).not.toHaveBeenCalled();
+  expect(documentQuery).not.toHaveBeenCalled();
+  expect(documentQueryAll).not.toHaveBeenCalled();
+  expect(attributes.mock.calls.filter(([name]) => name === 'transform')).toHaveLength(9);
+  expect(attributes.mock.calls.filter(([name]) => name === 'cx')).toHaveLength(500);
+  expect(attributes.mock.calls.filter(([name]) => name === 'd')).toHaveLength(499);
+});
+
+it.each([false, true])('positions revealed labels immediately with a stopped simulation, touch=%s', touch => {
+  vi.stubGlobal('matchMedia', () => ({ matches: touch }));
+  largeGraph();
+  const label = document.querySelector('.label-group[data-id="500"]')!;
+  expect(label.classList.contains('minor')).toBe(true);
+  const node = graph.getNode('500')!;
+  node.x = 123;
+  node.y = 456;
+  const offset = Number(document.querySelector('.node[data-id="500"]')!.getAttribute('r')) + 9;
+  const circle = document.querySelector('.node[data-id="499"]')!;
+  circle.dispatchEvent(new MouseEvent(touch ? 'click' : 'mouseenter', { bubbles: touch }));
+  expect(label.classList.contains('highlighted')).toBe(true);
+  expect(label.getAttribute('transform')).toBe(`translate(123, ${456 + offset})`);
+  expect(simulation.alpha()).toBe(0);
+  node.x = 321;
+  simulation.on('tick')!.call(simulation);
+  expect(label.getAttribute('transform')).toBe(`translate(321, ${456 + offset})`);
+  if (touch) document.querySelector('svg')!.dispatchEvent(new MouseEvent('click'));
+  else circle.dispatchEvent(new MouseEvent('mouseleave'));
+  node.x = 999;
+  simulation.on('tick')!.call(simulation);
+  expect(label.getAttribute('transform')).toBe(`translate(321, ${456 + offset})`);
+});
