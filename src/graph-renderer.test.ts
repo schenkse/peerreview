@@ -21,6 +21,12 @@ beforeEach(() => {
   container.getBoundingClientRect = () => ({ width: 800, height: 600 }) as DOMRect;
   graph = new GraphState();
   renderer = new GraphRenderer(container, graph);
+  const svg = document.querySelector('svg')!;
+  // jsdom omits SVG animated dimensions used by D3's default zoom extent.
+  Object.defineProperties(svg, {
+    width: { value: { baseVal: { value: 800 } } },
+    height: { value: { baseVal: { value: 600 } } },
+  });
   graph.beginBatch();
   graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
   graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false });
@@ -211,4 +217,31 @@ it.each([false, true])('positions revealed labels immediately with a stopped sim
   node.x = 999;
   simulation.on('tick')!.call(simulation);
   expect(label.getAttribute('transform')).toBe(`translate(321, ${456 + offset})`);
+});
+
+
+it('clears zoom and pan immediately and interrupts pending view transitions', async () => {
+  const svg = document.querySelector('svg')!;
+  svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, clientX: 200, clientY: 150 }));
+  const transformed = d3.zoomTransform(svg);
+  expect(transformed.k).toBeGreaterThan(1);
+  expect(transformed.x).not.toBe(0);
+  expect(transformed.y).not.toBe(0);
+  renderer.zoomOut();
+  graph.clear();
+  expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
+  expect(svg.firstElementChild?.getAttribute('transform')).toBe('translate(0,0) scale(1)');
+  graph.addNode({ id: '9', recid: 9, name: 'New root', isRoot: true });
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
+  expect(document.querySelectorAll('.node')).toHaveLength(1);
+});
+
+it('retains the animated reset button behavior', () => {
+  const svg = document.querySelector('svg')!;
+  svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, clientX: 200, clientY: 150 }));
+  renderer.resetView();
+  // The button schedules an animation; graph clearing resets synchronously.
+  expect(d3.zoomTransform(svg).k).toBeGreaterThan(1);
+  d3.select(svg).interrupt();
 });

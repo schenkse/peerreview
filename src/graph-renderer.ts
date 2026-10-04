@@ -129,6 +129,7 @@ export class GraphRenderer {
   }
 
   reset(): void {
+    this.svg.interrupt().call(this.zoom.transform, d3.zoomIdentity);
     this.hover.clear();
     this.links.remove();
     this.nodes.remove();
