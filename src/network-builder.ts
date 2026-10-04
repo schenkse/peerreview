@@ -1,4 +1,4 @@
-import { fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
+import { ApiError, fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
 import {
   AUTHOR_PROFILE_CHUNK_SIZE,
   COAUTHOR_BATCH_CHUNK_SIZE,
@@ -200,20 +200,20 @@ export class NetworkBuilder {
     );
   }
 
-  /** Split oversized or failing queries until each author can be fetched independently. */
+  /** Split only result-window overflows and query-size failures. */
   private async fetchCoauthorConnections(bais: string[], signal: AbortSignal, seenPapers: Set<string>): Promise<number> {
     signal.throwIfAborted();
     try {
       const result = await this.fetchPublicationPages(bais, signal, pubs => this.addCrossEdges(pubs, seenPapers));
       signal.throwIfAborted();
-      if (result.complete || bais.length === 1) {
-        return result.complete ? 0 : 1;
+      if (result.complete || bais.length === 1 || result.total <= MAX_RESULT_WINDOW) {
+        return result.complete ? 0 : bais.length;
       }
     } catch (err) {
       signal.throwIfAborted();
-      if (bais.length === 1) {
+      if (bais.length === 1 || !(err instanceof ApiError && [400, 414].includes(err.status))) {
         console.warn(`Failed to fetch publications for ${bais[0]}:`, err);
-        return 1;
+        return bais.length;
       }
     }
     const middle = Math.ceil(bais.length / 2);

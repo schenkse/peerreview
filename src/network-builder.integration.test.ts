@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
+import { ApiError, fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
 import { GraphState } from './graph-state';
 import { NetworkBuilder } from './network-builder';
 import type { InspirePubAuthor, InspirePubHit, InspireSearchResponse } from './types';
 
-vi.mock('./api', () => ({
+vi.mock('./api', async original => ({
+  ...await original<typeof import('./api')>(),
   fetchPublications: vi.fn(),
   fetchPublicationsBatch: vi.fn(),
   fetchAuthorProfiles: vi.fn(),
@@ -34,7 +35,7 @@ beforeEach(() => {
   vi.mocked(fetchAuthorProfiles).mockResolvedValue(response([]));
 });
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); });
 
 describe('NetworkBuilder cancellation', () => {
   it('does not mutate a new graph when a cancelled root page finishes', async () => {
@@ -204,5 +205,50 @@ describe('NetworkBuilder publication reuse', () => {
       source === '2' && target === '3' && id === 'cross',
     )).toHaveLength(1);
     expect(graph.getEdges().find(edge => edge.paperIds.has('cross'))?.weight).toBe(2);
+  });
+});
+
+
+describe('NetworkBuilder query failures', () => {
+  it.each([new ApiError(429, 'Too many requests'), new ApiError(503, 'Unavailable'),
+    new DOMException('Timed out', 'TimeoutError'), new TypeError('Network failure')])(
+    'reports a partial graph without splitting %s', async error => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(fetchPublications).mockResolvedValue(response([paper('root', [author(1), author(2), author(3)])]));
+      vi.mocked(fetchPublicationsBatch).mockRejectedValue(error);
+      const progress = vi.fn();
+      await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
+      expect(fetchPublicationsBatch).toHaveBeenCalledOnce();
+      expect(fetchPublications).toHaveBeenCalledOnce();
+      expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({ phase: 'done' });
+      expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
+    },
+  );
+
+  it.each([400, 414])('splits HTTP %s query failures', async status => {
+    vi.mocked(fetchPublications).mockImplementation(async bai => response([
+      bai === 'Author.1' ? paper('root', [author(1), author(2), author(3)]) : paper(bai, [author(2), author(3)]),
+    ]));
+    vi.mocked(fetchPublicationsBatch).mockRejectedValue(new ApiError(status, 'Query failure'));
+    const progress = vi.fn();
+    await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
+    expect(fetchPublications).toHaveBeenCalledTimes(3);
+    expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
+  });
+
+  it('lets other batches finish after a service failure', async () => {
+    vi.mocked(fetchPublications).mockImplementation(async bai => response(bai === 'Author.1'
+      ? Array.from({ length: 52 }, (_, i) => paper(`root-${i}`, [author(1), author(i + 2)]))
+      : [paper('successful', [author(52), author(53)])]));
+    vi.mocked(fetchPublicationsBatch).mockImplementation(async bais => {
+      if (bais.includes('Author.2')) throw new ApiError(500, 'Unavailable');
+      return response([paper('successful', [author(52), author(53)])]);
+    });
+    const graph = new GraphState();
+    const progress = vi.fn();
+    await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
+    expect(fetchPublicationsBatch).toHaveBeenCalledTimes(2);
+    expect(graph.getNeighborIds('52').has('53')).toBe(true);
+    expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 50 co-authors are incomplete');
   });
 });

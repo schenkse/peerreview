@@ -3,6 +3,13 @@ import { rateLimiter } from './rate-limiter';
 import { TtlCache } from './cache';
 import type { InspireAuthorHit, InspirePubHit, InspireSearchResponse } from './types';
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, statusText: string) {
+    super(`API request failed: ${status} ${statusText}`);
+    this.name = 'ApiError';
+  }
+}
+
 const responseCache = new TtlCache<unknown>();
 
 async function request<T>(url: string, signal?: AbortSignal): Promise<InspireSearchResponse<T>> {
@@ -12,7 +19,7 @@ async function request<T>(url: string, signal?: AbortSignal): Promise<InspireSea
 
   const res = await rateLimiter.enqueue(url, signal);
   if (!res.ok) {
-    throw new Error(`API request failed: ${res.status} ${res.statusText}`);
+    throw new ApiError(res.status, res.statusText);
   }
   const data = (await res.json()) as InspireSearchResponse<T>;
   signal?.throwIfAborted();

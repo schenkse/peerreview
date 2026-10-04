@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { searchAuthors } from './api';
+import { ApiError, searchAuthors } from './api';
 import { rateLimiter } from './rate-limiter';
 
 afterEach(() => vi.restoreAllMocks());
@@ -30,4 +30,12 @@ describe('API cancellation', () => {
     await searchAuthors('late body');
     expect(enqueue).toHaveBeenCalledTimes(2);
   });
+});
+
+
+it('preserves the HTTP status in API errors', async () => {
+  vi.spyOn(rateLimiter, 'enqueue').mockResolvedValue(new Response('', { status: 414, statusText: 'URI too long' }));
+  const error = await searchAuthors('query failure').catch(error => error);
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error.status).toBe(414);
 });
