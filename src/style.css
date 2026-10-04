@@ -106,6 +106,8 @@ button {
   white-space: nowrap;
 }
 
+.home-icon { display: none; }
+
 #bar-search {
   flex: 0 1 340px;
   min-width: 0;
@@ -585,7 +587,15 @@ button {
     padding: 16px;
   }
 
-  [data-view="graph"] .wordmark { display: none; }
+  [data-view="graph"] .wordmark {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+  }
+  [data-view="graph"] .wordmark-text { display: none; }
+  [data-view="graph"] .home-icon { display: block; width: 18px; height: 18px; }
   [data-view="graph"] #bar-search { flex: 1; }
 
   .bar-end { gap: 16px; }

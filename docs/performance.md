@@ -51,3 +51,25 @@ receive no transforms. Separate mouse and touch probes reveal author 500's label
 by selecting author 499, verify its current position before another tick, then
 verify it follows ticks only while visible. These checks use jsdom and establish
 DOM work counts, not browser frame rates.
+
+# Desktop and mobile interaction checks
+
+The production build was checked in headless Chrome on 2026-10-04 with controlled
+API responses for 30 authors. Google Fonts requests were blocked, so the checks
+used the system font fallback. Desktop used a mouse pointer; mobile used Chrome's
+emulated coarse pointer and touch support.
+
+| Viewport width, px | Home control width, px | Search width, px | Overlapping controls |
+| --- | --- | --- | --- |
+| 1,280 | 88.84 | 340 | None |
+| 320 | 28 | 176 | None |
+| 375 | 28 | 231 | None |
+
+At each width, autocomplete selection opened the graph. A connection response was
+held until a node was selected, then released; the new neighbor inherited the
+active highlight. Background clicks cleared the selection. After zooming, the
+home button cleared all nodes, restored the landing search with an empty value,
+and immediately restored the identity zoom transform. The wordmark stayed
+visible on desktop and the home icon appeared only in mobile graph view. No
+uncaught application exceptions occurred. Screenshots were inspected locally.
+These checks verify the production UI against fixtures, not the live API.

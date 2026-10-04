@@ -16,7 +16,10 @@
 </head>
 <body data-view="landing">
   <header class="bar">
-    <button id="home" class="wordmark">PeerReview</button>
+    <button id="home" class="wordmark" aria-label="Return to home">
+      <span class="wordmark-text">PeerReview</span>
+      <svg class="icon home-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 7 8 1.5 14.5 7M3.5 5.5v9h9v-9M6.5 14.5v-5h3v5"/></svg>
+    </button>
     <div id="bar-search"></div>
     <div class="bar-end">
       <button id="theme-toggle" class="txt" aria-label="Toggle theme">
