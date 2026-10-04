@@ -11,7 +11,7 @@ describe('visitPaginated', () => {
   it('stops oversized batch queries after the first page without processing them', async () => {
     const fetchPage = vi.fn().mockResolvedValue({ items: [1, 2, 3], total: 10001 });
     const onItems = vi.fn();
-    const result = await visitPaginated<number>(fetchPage, { itemId: item => item, pageSize: 250, maxWindow: 10000, stopOnOverflow: true, onItems });
+    const result = await visitPaginated<number>(fetchPage, { itemId: item => item, pageSize: 500, maxWindow: 10000, stopOnOverflow: true, onItems });
     expect(result).toEqual({ count: 0, total: 10001, complete: false });
     expect(fetchPage).toHaveBeenCalledOnce();
     expect(onItems).not.toHaveBeenCalled();
@@ -40,10 +40,10 @@ describe('visitPaginated', () => {
       calls++;
       return Promise.resolve({ items: [page], total: 1_000_000 });
     };
-    const out = await visitPaginated<number>(fetchPage, { itemId: item => item, pageSize: 250, maxWindow: 1000 });
-    // pageSize 250, window 1000 => stop after page 4 (4*250 = 1000)
-    expect(calls).toBe(4);
-    expect(out).toEqual({ count: 4, total: 1_000_000, complete: false });
+    const out = await visitPaginated<number>(fetchPage, { itemId: item => item, pageSize: 500, maxWindow: 1000 });
+    // pageSize 500, window 1000 => stop after page 2 (2*500 = 1000)
+    expect(calls).toBe(2);
+    expect(out).toEqual({ count: 2, total: 1_000_000, complete: false });
   });
 
   it('invokes onPage with the page index and total', async () => {

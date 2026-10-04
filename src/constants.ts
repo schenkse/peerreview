@@ -1,6 +1,6 @@
 export const MAX_COAUTHOR_COUNT = 10;
 export const INSPIRE_BASE_URL = 'https://inspirehep.net/api';
-export const DEFAULT_PAGE_SIZE = 250;
+export const DEFAULT_PAGE_SIZE = 500;
 // InspireHEP / Elasticsearch reject pagination past this result window
 // (default index.max_result_window). page * size must stay <= this.
 export const MAX_RESULT_WINDOW = 10000;

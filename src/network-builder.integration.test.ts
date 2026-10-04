@@ -172,7 +172,7 @@ describe('NetworkBuilder completeness', () => {
     );
     const progress = vi.fn();
     await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
-    expect(fetchPublications).toHaveBeenCalledTimes(40);
+    expect(fetchPublications).toHaveBeenCalledTimes(20);
     expect(progress.mock.calls.at(-1)?.[0].message).toContain('Root publications are incomplete');
     expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Partial network\./);
   });

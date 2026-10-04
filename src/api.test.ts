@@ -55,5 +55,6 @@ it('requests only the fields each operation consumes', async () => {
     'name,ids,positions,control_number,stub', 'authors.recid,authors.full_name,authors.ids',
     'authors.recid', 'authors.recid', 'control_number,name,ids',
   ]);
+  expect(urls.slice(1).map(url => url.searchParams.get('size'))).toEqual(['500', '500', '500', '500']);
   expect(urls[3].searchParams.get('q')).toBe('(a Batch.one or a Batch.two) and ac 1->10');
 });
