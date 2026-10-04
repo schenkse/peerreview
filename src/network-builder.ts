@@ -258,20 +258,28 @@ export class NetworkBuilder {
           const result = await fetchAuthorProfiles(chunkRecids, signal);
           signal.throwIfAborted();
           this.graphState.beginBatch();
-          for (const hit of result.hits.hits) {
-            const recid = hit.metadata.control_number;
-            const name = hit.metadata.name.preferred_name ?? hit.metadata.name.value;
-            if (recid && name) {
-              this.graphState.updateNodeName(String(recid), name);
-              const bai = hit.metadata.ids?.find(id => id.schema === 'INSPIRE BAI')?.value;
+          try {
+            for (const hit of result.hits.hits) {
+              const metadata = hit?.metadata;
+              const recid = metadata?.control_number;
+              if (!Number.isInteger(recid) || recid <= 0 || !this.graphState.hasNode(String(recid))) continue;
+              const preferred = metadata.name?.preferred_name;
+              const fallback = metadata.name?.value;
+              const name = typeof preferred === 'string' && preferred.trim()
+                ? preferred : typeof fallback === 'string' && fallback.trim() ? fallback : undefined;
+              if (name) this.graphState.updateNodeName(String(recid), name);
+              const bai = Array.isArray(metadata.ids)
+                ? metadata.ids.find(id => id?.schema === 'INSPIRE BAI'
+                  && typeof id.value === 'string' && id.value.trim())?.value
+                : undefined;
               if (bai) {
                 coauthorBais.set(String(recid), bai);
-                const node = this.graphState.getNode(String(recid));
-                if (node) node.bai = bai;
+                this.graphState.getNode(String(recid))!.bai = bai;
               }
             }
+          } finally {
+            this.graphState.endBatch();
           }
-          this.graphState.endBatch();
         } catch (err) {
           if ((err as Error).name === 'AbortError') return;
           console.warn(`Failed to enrich names for ${chunkRecids.length} authors:`, err);

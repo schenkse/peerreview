@@ -252,3 +252,31 @@ describe('NetworkBuilder query failures', () => {
     expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 50 co-authors are incomplete');
   });
 });
+
+
+it('retains valid profile fields and balances batches after malformed profiles', async () => {
+  vi.mocked(fetchPublications).mockResolvedValueOnce(response([paper('root', [author(1),
+    { recid: 2, full_name: 'Initial 2' }, { recid: 3, full_name: 'Initial 3' }, author(4)])]));
+  vi.mocked(fetchAuthorProfiles).mockResolvedValue(response([
+    null, { metadata: { control_number: '2', name: { value: 'Wrong ID' } } },
+    { metadata: { control_number: 2, name: null, ids: [null, { schema: 'INSPIRE BAI', value: 4 },
+      { schema: 'INSPIRE BAI', value: 'Recovered.2' }] } },
+    { metadata: { control_number: 3, name: { preferred_name: 42, value: 'Canonical 3' }, ids: {} } },
+    { metadata: { control_number: 4, name: { value: 'Canonical 4' }, ids: [null] } },
+  ] as unknown as import('./types').InspireAuthorHit[]));
+  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([paper('later', [author(2), author(4)])]));
+  const graph = new GraphState();
+  const changed = vi.fn();
+  graph.on('changed', changed);
+  const progress = vi.fn();
+  await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
+  expect(graph.getNode('2')).toMatchObject({ name: 'Initial 2', bai: 'Recovered.2' });
+  expect(graph.getNode('3')?.name).toBe('Canonical 3');
+  expect(graph.getNode('4')?.name).toBe('Canonical 4');
+  expect(fetchPublicationsBatch).toHaveBeenCalledWith(['Author.4', 'Recovered.2'], 1, expect.any(AbortSignal));
+  expect(graph.getEdges().find(e => e.paperIds.has('later'))?.weight).toBe(2);
+  changed.mockClear();
+  graph.updateNodeName('2', 'After build');
+  expect(changed).toHaveBeenCalledOnce();
+  expect(progress.mock.calls.at(-1)?.[0].phase).toBe('done');
+});
