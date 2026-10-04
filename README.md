@@ -14,7 +14,7 @@ Visualize academic co-authorship networks for any researcher indexed on [Inspire
 
 ## Usage
 
-Type a researcher's name (e.g. `Higgs, Peter`) into the search bar and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors, building the graph live as data arrives. Hover over any node to highlight its direct collaborators.
+Type a researcher's name (e.g. `Higgs, Peter`) into the search box on the landing page, or pick one of the example searches, and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors, building the graph live as data arrives. In larger networks only the best-connected authors are labelled; hover over any node to highlight its direct collaborators and show their names. Click the PeerReview wordmark to return to the landing page.
 
 ## Tech stack
 

@@ -9,36 +9,162 @@
     const os = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', s ?? os);
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" />
   <link rel="stylesheet" href="./src/style.css" />
 </head>
-<body>
-  <header id="header">
-    <div class="header-content">
-      <div class="header-left"><h1>PeerReview</h1></div>
-      <div id="search-container"></div>
-      <div class="header-right">
-        <button id="theme-toggle" aria-label="Toggle theme"></button>
-      </div>
+<body data-view="landing">
+  <header class="bar">
+    <button id="home" class="wordmark">PeerReview</button>
+    <div id="bar-search"></div>
+    <div class="bar-end">
+      <button id="theme-toggle" class="txt" aria-label="Toggle theme">
+        <svg class="icon moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z"/></svg>
+        <svg class="icon sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg>
+        <span class="txt-label">Theme</span>
+      </button>
+      <button id="about-btn" class="txt" aria-label="About PeerReview">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4M8 4.8v.1"/></svg>
+        <span class="txt-label">About</span>
+      </button>
     </div>
   </header>
+
+  <section id="landing">
+    <div class="hero">
+      <h1>Who publishes with whom</h1>
+      <p class="intro">Type a physicist's name. PeerReview maps their co-authors from INSPIRE-HEP and the links between them.</p>
+      <div id="search-container">
+        <svg class="icon search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
+      </div>
+      <p class="try">Try <button data-query="Witten, Edward">Edward Witten</button>, <button data-query="Randall, Lisa">Lisa Randall</button> or <button data-query="Maldacena, Juan">Juan Maldacena</button></p>
+    </div>
+    <svg class="preview" viewBox="374 120 532 620" aria-hidden="true" focusable="false">
+      <path d="M661 468Q545.5 379 404 344" stroke-width="1"/>
+      <path d="M661 468Q587.3 410.5 494 403" stroke-width="3.5"/>
+      <path d="M661 468Q710.1 473.5 754 451" stroke-width="1.4"/>
+      <path d="M661 468Q554.3 328.9 407 234" stroke-width="1"/>
+      <path d="M661 468Q634.2 368.4 557 300" stroke-width="2.6"/>
+      <path d="M661 468Q572.1 437.5 481 461" stroke-width="2"/>
+      <path d="M661 468Q638.6 299.8 559 150" stroke-width="1.4"/>
+      <path d="M661 468Q664.8 373.8 616 293" stroke-width="2.8"/>
+      <path d="M661 468Q600 558.7 596 668" stroke-width="2.8"/>
+      <path d="M661 468Q738.2 490.6 815 467" stroke-width="2"/>
+      <path d="M661 468Q704.3 568 794 630" stroke-width="2.6"/>
+      <path d="M661 468Q634.9 547.9 657 629" stroke-width="2.4"/>
+      <path d="M661 468Q745 535.2 852 547" stroke-width="3"/>
+      <path d="M661 468Q688.1 601.3 770 710" stroke-width="1"/>
+      <path d="M661 468Q735.9 342.2 754 197" stroke-width="1.4"/>
+      <path d="M661 468Q716.6 546.3 806 581" stroke-width="2.6"/>
+      <path d="M661 468Q616.2 395.7 539 360" stroke-width="2.6"/>
+      <path d="M661 468Q701.1 378.1 685 281" stroke-width="1"/>
+      <path d="M661 468Q585.4 496.6 538 562" stroke-width="2.6"/>
+      <path d="M661 468Q532.9 472.6 421 535" stroke-width="1.7"/>
+      <path d="M661 468Q741.7 426.3 786 347" stroke-width="3.5"/>
+      <path d="M661 468Q639.6 571 678 669" stroke-width="3"/>
+      <path d="M661 468Q782.2 335.2 853 170" stroke-width="1"/>
+      <path d="M661 468Q708.3 595.9 806 691" stroke-width="2"/>
+      <path d="M661 468Q589.5 533.8 566 628" stroke-width="3.5"/>
+      <path d="M661 468Q770 492.5 876 457" stroke-width="2.6"/>
+      <path d="M404 344Q425 414.1 481 461" stroke-width="1.4"/>
+      <path d="M404 344Q517 347.7 616 293" stroke-width="1"/>
+      <path d="M494 403Q618.6 456.5 754 451" stroke-width="1.4"/>
+      <path d="M494 403Q475.9 305.5 407 234" stroke-width="2"/>
+      <path d="M494 403Q571.5 366.3 616 293" stroke-width="1.4"/>
+      <path d="M754 451Q616.4 426 481 461" stroke-width="1"/>
+      <path d="M754 451Q707.6 352.3 616 293" stroke-width="1.4"/>
+      <path d="M407 234Q472.1 289.5 557 300" stroke-width="1.7"/>
+      <path d="M407 234Q503.3 292.4 616 293" stroke-width="1.4"/>
+      <path d="M557 300Q494.9 369.1 481 461" stroke-width="1.4"/>
+      <path d="M557 300Q580.5 225.3 559 150" stroke-width="1.4"/>
+      <path d="M481 461Q571.9 395.8 616 293" stroke-width="2"/>
+      <path d="M559 150Q566.1 230.1 616 293" stroke-width="2"/>
+      <path d="M815 467Q780.1 545.4 794 630" stroke-width="1.7"/>
+      <path d="M815 467Q714.5 527.1 657 629" stroke-width="1.7"/>
+      <path d="M815 467Q821.5 512.6 852 547" stroke-width="1.4"/>
+      <path d="M815 467Q763 583 770 710" stroke-width="2"/>
+      <path d="M794 630Q725.7 609 657 629" stroke-width="2"/>
+      <path d="M794 630Q835.5 597.2 852 547" stroke-width="1.4"/>
+      <path d="M794 630Q770 666.4 770 710" stroke-width="1"/>
+      <path d="M657 629Q766.1 615.7 852 547" stroke-width="1.7"/>
+      <path d="M657 629Q701.4 686.5 770 710" stroke-width="1.4"/>
+      <path d="M852 547Q786.6 616.2 770 710" stroke-width="2"/>
+      <path d="M806 581Q617.1 528.2 421 535" stroke-width="1"/>
+      <path d="M806 581Q825.9 461.4 786 347" stroke-width="1"/>
+      <path d="M539 360Q623.9 342.4 685 281" stroke-width="1.7"/>
+      <path d="M539 360Q508.5 460.9 538 562" stroke-width="1.7"/>
+      <path d="M539 360Q455.1 430.7 421 535" stroke-width="1.7"/>
+      <path d="M539 360Q664.1 383.5 786 347" stroke-width="2"/>
+      <path d="M685 281Q584.9 407.6 538 562" stroke-width="1.4"/>
+      <path d="M685 281Q725.6 329.2 786 347" stroke-width="1.4"/>
+      <path d="M538 562Q483.6 531 421 535" stroke-width="2"/>
+      <path d="M404 344Q600.9 434.2 815 467" stroke-width="1"/>
+      <path d="M407 234Q454.1 316.8 539 360" stroke-width="1"/>
+      <path d="M794 630Q673.7 567 538 562" stroke-width="1"/>
+      <path d="M616 293Q748.3 258.1 853 170" stroke-width="1"/>
+      <path d="M852 547Q700.8 558.6 566 628" stroke-width="1"/>
+      <path d="M754 451Q760.5 523.8 806 581" stroke-width="1"/>
+      <circle cx="661" cy="468" r="17.2" style="fill:var(--node-root)"/>
+      <circle cx="404" cy="344" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="494" cy="403" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="754" cy="451" r="10.5" style="fill:color-mix(in oklab, var(--node-degree-high) 63%, var(--node-degree-low))"/>
+      <circle cx="407" cy="234" r="10.5" style="fill:color-mix(in oklab, var(--node-degree-high) 63%, var(--node-degree-low))"/>
+      <circle cx="557" cy="300" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="481" cy="461" r="10.5" style="fill:color-mix(in oklab, var(--node-degree-high) 63%, var(--node-degree-low))"/>
+      <circle cx="559" cy="150" r="9.5" style="fill:color-mix(in oklab, var(--node-degree-high) 38%, var(--node-degree-low))"/>
+      <circle cx="616" cy="293" r="11.5" style="fill:color-mix(in oklab, var(--node-degree-high) 100%, var(--node-degree-low))"/>
+      <circle cx="596" cy="668" r="7.7" style="fill:color-mix(in oklab, var(--node-degree-high) 13%, var(--node-degree-low))"/>
+      <circle cx="815" cy="467" r="10.9" style="fill:color-mix(in oklab, var(--node-degree-high) 75%, var(--node-degree-low))"/>
+      <circle cx="794" cy="630" r="10.9" style="fill:color-mix(in oklab, var(--node-degree-high) 75%, var(--node-degree-low))"/>
+      <circle cx="657" cy="629" r="10.5" style="fill:color-mix(in oklab, var(--node-degree-high) 63%, var(--node-degree-low))"/>
+      <circle cx="852" cy="547" r="10.9" style="fill:color-mix(in oklab, var(--node-degree-high) 75%, var(--node-degree-low))"/>
+      <circle cx="770" cy="710" r="10.5" style="fill:color-mix(in oklab, var(--node-degree-high) 63%, var(--node-degree-low))"/>
+      <circle cx="754" cy="197" r="7.7" style="fill:color-mix(in oklab, var(--node-degree-high) 13%, var(--node-degree-low))"/>
+      <circle cx="806" cy="581" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="539" cy="360" r="10.9" style="fill:color-mix(in oklab, var(--node-degree-high) 75%, var(--node-degree-low))"/>
+      <circle cx="685" cy="281" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="538" cy="562" r="10.5" style="fill:color-mix(in oklab, var(--node-degree-high) 63%, var(--node-degree-low))"/>
+      <circle cx="421" cy="535" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="786" cy="347" r="10" style="fill:color-mix(in oklab, var(--node-degree-high) 50%, var(--node-degree-low))"/>
+      <circle cx="678" cy="669" r="7.7" style="fill:color-mix(in oklab, var(--node-degree-high) 13%, var(--node-degree-low))"/>
+      <circle cx="853" cy="170" r="8.7" style="fill:color-mix(in oklab, var(--node-degree-high) 25%, var(--node-degree-low))"/>
+      <circle cx="806" cy="691" r="7.7" style="fill:color-mix(in oklab, var(--node-degree-high) 13%, var(--node-degree-low))"/>
+      <circle cx="566" cy="628" r="8.7" style="fill:color-mix(in oklab, var(--node-degree-high) 25%, var(--node-degree-low))"/>
+      <circle cx="876" cy="457" r="7.7" style="fill:color-mix(in oklab, var(--node-degree-high) 13%, var(--node-degree-low))"/>
+    </svg>
+    <p class="foot">Data from INSPIRE-HEP. Papers with more than 10 authors are left out.</p>
+  </section>
+
   <main id="graph-container"></main>
-  <div id="bottom-right-controls">
-    <div id="zoom-controls">
-      <button id="zoom-in" aria-label="Zoom in">+</button>
-      <button id="zoom-reset" aria-label="Reset view">⊙</button>
-      <button id="zoom-out" aria-label="Zoom out">−</button>
-    </div>
-    <button id="info-btn" aria-label="About PeerReview">?</button>
+
+  <div id="status">
+    <p id="summary"></p>
+    <div id="progress"></div>
   </div>
-  <div id="info-modal">
-    <div class="info-card">
-      <button id="info-close" aria-label="Close">&times;</button>
-      <h2 class="info-title">PeerReview</h2>
-      <p class="info-body">Visualize academic co-authorship networks from the high-energy physics literature. Search for a researcher to explore who they collaborate with and how those collaborators are connected to each other.</p>
-      <p class="info-meta">Created by <a href="https://schenkse.github.io" target="_blank" rel="noopener">Sebastian Schenk</a> &amp; <strong>Claude</strong></p>
-      <p class="info-attribution">Powered by the <a href="https://inspirehep.net" target="_blank" rel="noopener">InspireHEP</a> REST API &mdash; a free, open resource maintained by the InspireHEP team for the high-energy physics community. See the <a href="https://github.com/inspirehep/rest-api-doc" target="_blank" rel="noopener">API docs</a>.</p>
-    </div>
+
+  <div id="legend" aria-hidden="true">
+    <span><svg viewBox="0 0 26 14"><circle cx="13" cy="7" r="5" fill="var(--node-root)"/></svg>Searched researcher</span>
+    <span><svg viewBox="0 0 26 14"><circle cx="5" cy="7" r="3" fill="var(--node-degree-low)"/><circle cx="18" cy="7" r="6" fill="var(--node-degree-high)"/></svg>More connections</span>
+    <span><svg viewBox="0 0 26 14"><path d="M2 7h22" stroke="var(--node-degree-high)" stroke-width="3" opacity=".5"/></svg>More shared papers</span>
   </div>
+
+  <div id="zoom-controls">
+    <button id="zoom-out" aria-label="Zoom out"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+    <button id="zoom-reset" aria-label="Reset view"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1.2"/></svg></button>
+    <button id="zoom-in" aria-label="Zoom in"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+  </div>
+
+  <dialog id="about" aria-labelledby="about-title">
+    <div class="about-card">
+      <form method="dialog"><button class="about-close" aria-label="Close">&times;</button></form>
+      <h2 id="about-title">PeerReview</h2>
+      <p>Visualize academic co-authorship networks from the high-energy physics literature. Search for a researcher to explore who they collaborate with and how those collaborators are connected to each other.</p>
+      <p>Created by <a href="https://schenkse.github.io" target="_blank" rel="noopener">Sebastian Schenk</a> &amp; <strong>Claude</strong>. <a href="https://github.com/schenkse/peerreview" target="_blank" rel="noopener">Source code on GitHub</a>.</p>
+      <p class="about-attribution">Powered by the <a href="https://inspirehep.net" target="_blank" rel="noopener">InspireHEP</a> REST API &mdash; a free, open resource maintained by the InspireHEP team for the high-energy physics community. See the <a href="https://github.com/inspirehep/rest-api-doc" target="_blank" rel="noopener">API docs</a>.</p>
+    </div>
+  </dialog>
+
   <script type="module" src="/src/main.ts"></script>
   <noscript>PeerReview requires JavaScript. Please enable it in your browser settings.</noscript>
 </body>

@@ -3,6 +3,11 @@ import type { AuthorNode, CoauthorEdge } from './types';
 import type { GraphState } from './graph-state';
 import { setupHover, clearHighlight } from './hover';
 
+// Larger networks label only the root and this many best-connected co-authors;
+// the rest show their names on hover. Networks up to ALL_LABELS_MAX co-authors label everyone.
+const LABELLED_AUTHORS = 8;
+const ALL_LABELS_MAX = 12;
+
 export class GraphRenderer {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private g: d3.Selection<SVGGElement, unknown, null, undefined>;
@@ -29,33 +34,6 @@ export class GraphRenderer {
       .append('svg')
       .attr('width', this.width)
       .attr('height', this.height);
-
-    // SVG filters for glow effects
-    const defs = this.svg.append('defs');
-
-    defs.append('filter')
-      .attr('id', 'glow-hover')
-      .attr('x', '-50%').attr('y', '-50%')
-      .attr('width', '200%').attr('height', '200%')
-      .call((f) => {
-        f.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
-        f.append('feMerge').call((m) => {
-          m.append('feMergeNode').attr('in', 'blur');
-          m.append('feMergeNode').attr('in', 'SourceGraphic');
-        });
-      });
-
-    defs.append('filter')
-      .attr('id', 'glow-root')
-      .attr('x', '-50%').attr('y', '-50%')
-      .attr('width', '200%').attr('height', '200%')
-      .call((f) => {
-        f.append('feGaussianBlur').attr('stdDeviation', '2.5').attr('result', 'blur');
-        f.append('feMerge').call((m) => {
-          m.append('feMergeNode').attr('in', 'blur');
-          m.append('feMergeNode').attr('in', 'SourceGraphic');
-        });
-      });
 
     // If the container has no dimensions yet (e.g. hidden at startup), correct
     // as soon as it becomes visible for the first time.
@@ -145,8 +123,8 @@ export class GraphRenderer {
 
   refreshColors(): void {
     const style = getComputedStyle(this.container);
-    const lowColor = style.getPropertyValue('--node-degree-low').trim() || '#3d7ab5';
-    const highColor = style.getPropertyValue('--node-degree-high').trim() || '#b44fcc';
+    const lowColor = style.getPropertyValue('--node-degree-low').trim() || '#d3d6dc';
+    const highColor = style.getPropertyValue('--node-degree-high').trim() || '#454a55';
     const rootId = this.graphState.getNodes().find(n => n.isRoot)?.id;
     let maxDegree = 1;
     for (const [id, degree] of this.degreeMap) {
@@ -158,11 +136,21 @@ export class GraphRenderer {
   }
 
   private refreshLabels(): void {
-    const labels = this.labelGroup.selectAll<SVGGElement, AuthorNode>('g.label-group');
-    labels.select<SVGRectElement>('rect.label-bg')
-      .attr('width', d => d.name.length * 7.8 + 22)
-      .attr('x', d => -(d.name.length * 7.8 + 22) / 2);
-    labels.select<SVGTextElement>('text.label').text(d => d.name);
+    this.labelGroup.selectAll<SVGGElement, AuthorNode>('g.label-group')
+      .select<SVGTextElement>('text.label').text(d => d.name);
+  }
+
+  // Ids of nodes whose labels stay visible without hovering.
+  private labelledIds(nodes: AuthorNode[]): Set<string> {
+    const coauthors = nodes.filter((n) => !n.isRoot);
+    const shown = coauthors.length <= ALL_LABELS_MAX
+      ? coauthors
+      : [...coauthors]
+        .sort((a, b) => (this.degreeMap.get(b.id) ?? 0) - (this.degreeMap.get(a.id) ?? 0))
+        .slice(0, LABELLED_AUTHORS);
+    const ids = new Set(shown.map((n) => n.id));
+    for (const n of nodes) if (n.isRoot) ids.add(n.id);
+    return ids;
   }
 
   private nodeRadius(d: AuthorNode): number {
@@ -212,7 +200,7 @@ export class GraphRenderer {
 
     linkSel
       .merge(linkEnter)
-      .attr('stroke-width', (d) => Math.sqrt(d.weight) * 2);
+      .attr('stroke-width', (d) => Math.sqrt(d.weight) * 1.25);
 
     // --- Nodes ---
     const nodeSel = this.nodeGroup
@@ -226,7 +214,6 @@ export class GraphRenderer {
       .append('circle')
       .attr('class', (d) => `node${d.isRoot ? ' root' : ''}`)
       .attr('data-id', (d) => d.id)
-      .attr('filter', (d) => d.isRoot ? 'url(#glow-root)' : null)
       .call(this.dragBehavior());
 
     // Attach hover to new nodes
@@ -247,19 +234,16 @@ export class GraphRenderer {
     const labelEnter = labelSel
       .enter()
       .append('g')
-      .attr('class', 'label-group')
+      .attr('class', (d) => `label-group${d.isRoot ? ' root' : ''}`)
       .attr('data-id', (d) => d.id);
-
-    labelEnter.append('rect')
-      .attr('class', 'label-bg')
-      .attr('rx', 11).attr('ry', 11)
-      .attr('height', 23).attr('y', -11.5);
 
     labelEnter.append('text')
       .attr('class', 'label')
       .attr('x', 0).attr('dy', '0.35em')
       .attr('text-anchor', 'middle');
 
+    const labelled = this.labelledIds(nodes);
+    labelSel.merge(labelEnter).classed('minor', (d) => !labelled.has(d.id));
     this.refreshLabels();
 
     // Reheat gently

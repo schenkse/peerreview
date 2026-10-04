@@ -54,7 +54,7 @@ describe('GraphRenderer appearance updates', () => {
     expect(simulation.alpha()).toBe(0);
   });
 
-  it('updates names and label widths without changing the layout', () => {
+  it('updates names without changing the layout', () => {
     const restart = vi.spyOn(simulation, 'restart');
     const node = graph.getNode('2')!;
     const position = [node.x, node.y];
@@ -62,7 +62,6 @@ describe('GraphRenderer appearance updates', () => {
     graph.updateNodeName('2', 'Canonical author name');
     graph.endBatch();
     expect(document.querySelector('.label-group[data-id="2"] text')?.textContent).toBe('Canonical author name');
-    expect(document.querySelector('.label-group[data-id="2"] rect')?.getAttribute('width')).toBe(String(node.name.length * 7.8 + 22));
     expect([node.x, node.y]).toEqual(position);
     expect(restart).not.toHaveBeenCalled();
   });
@@ -73,6 +72,21 @@ describe('GraphRenderer appearance updates', () => {
     graph.addOrUpdateEdge('1', '2', 'another paper');
     graph.endBatch();
     expect(restart).toHaveBeenCalledOnce();
-    expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(2) * 2));
+    expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(2) * 1.25));
+  });
+
+  it('labels only the root and the best-connected co-authors in larger networks', () => {
+    graph.clear();
+    graph.beginBatch();
+    graph.addNode({ id: 'r', recid: 0, name: 'Root', isRoot: true });
+    // Co-authors c0..c7 are all linked to each other; c8..c14 only to the root.
+    for (let i = 0; i < 15; i++) {
+      graph.addNode({ id: `c${i}`, recid: i + 1, name: `Coauthor ${i}`, isRoot: false });
+      graph.addOrUpdateEdge('r', `c${i}`, `p${i}`);
+      if (i < 8) for (let j = 0; j < i; j++) graph.addOrUpdateEdge(`c${i}`, `c${j}`, `p${i}-${j}`);
+    }
+    graph.endBatch();
+    const labelled = [...document.querySelectorAll('.label-group:not(.minor)')].map((el) => el.getAttribute('data-id'));
+    expect(labelled.sort()).toEqual(['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'r']);
   });
 });

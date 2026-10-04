@@ -1,5 +1,6 @@
 import type { NetworkProgress } from './types';
 
+// Shows build progress as text in `container` and as a meter appended to `barContainer`.
 export class ProgressIndicator {
   private bar: HTMLDivElement;
   private text: HTMLSpanElement;
@@ -8,6 +9,7 @@ export class ProgressIndicator {
 
   constructor(
     private container: HTMLElement,
+    barContainer: HTMLElement = container,
     private hideDelayMs = 5000,
   ) {
     this.container.className = 'progress-container';
@@ -23,7 +25,7 @@ export class ProgressIndicator {
 
     this.bar.appendChild(this.fill);
     this.container.appendChild(this.text);
-    this.container.appendChild(this.bar);
+    barContainer.appendChild(this.bar);
 
     this.hide();
   }
@@ -38,7 +40,9 @@ export class ProgressIndicator {
       const f = Math.max(0, Math.min(1, progress.fraction ?? 0));
       this.fill.style.width = `${f * 100}%`;
     } else if (progress.phase === 'done' || progress.phase === 'error') {
+      // The meter fills up, then fades out (see .progress-bar in style.css).
       this.fill.style.width = '100%';
+      this.bar.classList.remove('visible');
       if (progress.phase === 'done') {
         this.hideTimer = setTimeout(() => this.hide(), this.hideDelayMs);
       }
@@ -48,6 +52,7 @@ export class ProgressIndicator {
   show(): void {
     this.clearHideTimer();
     this.container.classList.add('visible');
+    this.fill.style.width = '0%';
   }
 
   hide(): void {
