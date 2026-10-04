@@ -57,24 +57,20 @@ export class GraphState {
     this.emitOrBatch(false);
   }
 
-  addOrUpdateEdge(sourceId: string, targetId: string, paperId: string): void {
+  addOrUpdateEdge(sourceId: string, targetId: string): void {
     if (sourceId === targetId) return; // no self-loops
 
     const key = this.edgeKey(sourceId, targetId);
     const existing = this.edges.get(key);
 
     if (existing) {
-      if (!existing.paperIds.has(paperId)) {
-        existing.paperIds.add(paperId);
-        existing.weight = existing.paperIds.size;
-        this.emitOrBatch(true);
-      }
+      existing.weight++;
+      this.emitOrBatch(true);
     } else {
       const edge: CoauthorEdge = {
         source: sourceId,
         target: targetId,
         weight: 1,
-        paperIds: new Set([paperId]),
       };
       this.edges.set(key, edge);
 

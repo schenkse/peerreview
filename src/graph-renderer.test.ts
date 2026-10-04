@@ -24,7 +24,7 @@ beforeEach(() => {
   graph.beginBatch();
   graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
   graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false });
-  graph.addOrUpdateEdge('1', '2', 'paper');
+  graph.addOrUpdateEdge('1', '2');
   graph.endBatch();
   simulation = vi.mocked(d3.forceSimulation).mock.results.at(-1)!.value;
   simulation.stop().alpha(0);
@@ -69,7 +69,7 @@ describe('GraphRenderer appearance updates', () => {
   it('restarts the simulation when an edge weight changes', () => {
     const restart = vi.spyOn(simulation, 'restart');
     graph.beginBatch();
-    graph.addOrUpdateEdge('1', '2', 'another paper');
+    graph.addOrUpdateEdge('1', '2');
     graph.endBatch();
     expect(restart).toHaveBeenCalledOnce();
     expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(2) * 1.25));
@@ -82,8 +82,8 @@ describe('GraphRenderer appearance updates', () => {
     // Co-authors c0..c7 are all linked to each other; c8..c14 only to the root.
     for (let i = 0; i < 15; i++) {
       graph.addNode({ id: `c${i}`, recid: i + 1, name: `Coauthor ${i}`, isRoot: false });
-      graph.addOrUpdateEdge('r', `c${i}`, `p${i}`);
-      if (i < 8) for (let j = 0; j < i; j++) graph.addOrUpdateEdge(`c${i}`, `c${j}`, `p${i}-${j}`);
+      graph.addOrUpdateEdge('r', `c${i}`);
+      if (i < 8) for (let j = 0; j < i; j++) graph.addOrUpdateEdge(`c${i}`, `c${j}`);
     }
     graph.endBatch();
     const labelled = [...document.querySelectorAll('.label-group:not(.minor)')].map((el) => el.getAttribute('data-id'));

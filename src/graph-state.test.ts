@@ -47,7 +47,7 @@ describe('GraphState edges', () => {
     const s = new GraphState();
     s.addNode(node('1'));
     s.addNode(node('2'));
-    s.addOrUpdateEdge('1', '2', 'paperA');
+    s.addOrUpdateEdge('1', '2');
     expect(s.edgeCount).toBe(1);
     expect(s.getNeighborIds('1').has('2')).toBe(true);
     expect(s.getNeighborIds('2').has('1')).toBe(true);
@@ -57,27 +57,25 @@ describe('GraphState edges', () => {
     const s = new GraphState();
     s.addNode(node('1'));
     s.addNode(node('2'));
-    s.addOrUpdateEdge('1', '2', 'paperA');
-    s.addOrUpdateEdge('2', '1', 'paperB');
+    s.addOrUpdateEdge('1', '2');
+    s.addOrUpdateEdge('2', '1');
     expect(s.edgeCount).toBe(1);
   });
 
-  it('accumulates distinct papers into weight and dedupes repeats', () => {
+  it('increments weight for each processed publication pair', () => {
     const s = new GraphState();
     s.addNode(node('1'));
     s.addNode(node('2'));
-    s.addOrUpdateEdge('1', '2', 'paperA');
-    s.addOrUpdateEdge('1', '2', 'paperB');
-    s.addOrUpdateEdge('1', '2', 'paperA'); // duplicate paper id
+    s.addOrUpdateEdge('1', '2');
+    s.addOrUpdateEdge('1', '2');
     const edge = s.getEdges()[0];
     expect(edge.weight).toBe(2);
-    expect(edge.paperIds.size).toBe(2);
   });
 
   it('ignores self-loops', () => {
     const s = new GraphState();
     s.addNode(node('1'));
-    s.addOrUpdateEdge('1', '1', 'paperA');
+    s.addOrUpdateEdge('1', '1');
     expect(s.edgeCount).toBe(0);
   });
 });
@@ -123,7 +121,7 @@ describe('GraphState clear', () => {
     const s = new GraphState();
     s.addNode(node('1'));
     s.addNode(node('2'));
-    s.addOrUpdateEdge('1', '2', 'paperA');
+    s.addOrUpdateEdge('1', '2');
     const cleared: unknown[] = [];
     s.on('cleared', () => cleared.push(1));
     s.clear();

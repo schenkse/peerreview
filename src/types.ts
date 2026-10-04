@@ -53,7 +53,6 @@ export interface CoauthorEdge extends SimulationLinkDatum<AuthorNode> {
   source: string | AuthorNode;
   target: string | AuthorNode;
   weight: number;
-  paperIds: Set<string>;
 }
 
 // --- Progress reporting ---

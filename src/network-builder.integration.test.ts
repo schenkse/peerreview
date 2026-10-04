@@ -155,7 +155,7 @@ describe('NetworkBuilder completeness', () => {
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
     expect(fetchPublications).toHaveBeenCalledWith('Author.2', 1, expect.any(AbortSignal));
     expect(fetchPublications).toHaveBeenCalledWith('Author.3', 1, expect.any(AbortSignal));
-    expect(graph.getEdges().find(e => e.paperIds.has('cross-Author.2'))?.weight).toBe(3);
+    expect(graph.getEdges().find(e => [e.source, e.target].includes('2') && [e.source, e.target].includes('3'))?.weight).toBe(3);
     expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
   });
 
@@ -201,10 +201,8 @@ describe('NetworkBuilder publication reuse', () => {
     const graph = new GraphState();
     const updateEdge = vi.spyOn(graph, 'addOrUpdateEdge');
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
-    expect(updateEdge.mock.calls.filter(([source, target, id]) =>
-      source === '2' && target === '3' && id === 'cross',
-    )).toHaveLength(1);
-    expect(graph.getEdges().find(edge => edge.paperIds.has('cross'))?.weight).toBe(2);
+    expect(updateEdge.mock.calls.filter(([source, target]) => source === '2' && target === '3')).toHaveLength(2);
+    expect(graph.getEdges().find(edge => edge.source === '2' && edge.target === '3')?.weight).toBe(2);
   });
 });
 
@@ -274,7 +272,7 @@ it('retains valid profile fields and balances batches after malformed profiles',
   expect(graph.getNode('3')?.name).toBe('Canonical 3');
   expect(graph.getNode('4')?.name).toBe('Canonical 4');
   expect(fetchPublicationsBatch).toHaveBeenCalledWith(['Author.4', 'Recovered.2'], 1, expect.any(AbortSignal));
-  expect(graph.getEdges().find(e => e.paperIds.has('later'))?.weight).toBe(2);
+  expect(graph.getEdges().find(e => e.source === '2' && e.target === '4')?.weight).toBe(2);
   changed.mockClear();
   graph.updateNodeName('2', 'After build');
   expect(changed).toHaveBeenCalledOnce();
@@ -292,4 +290,31 @@ it('reports repeated root rows as incomplete and does not split incomplete conne
   expect(fetchPublicationsBatch).toHaveBeenCalledOnce();
   expect(progress.mock.calls.at(-1)?.[0].message).toContain('Root publications are incomplete (1/2 retrieved)');
   expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
+});
+
+
+it('counts each publication pair once with duplicate authors and missing root IDs', async () => {
+  const missingRoot = paper('missing-root', [author(2), author(2), author(3), author(3)]);
+  vi.mocked(fetchPublications).mockResolvedValueOnce(response([missingRoot, missingRoot]));
+  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([
+    missingRoot, paper('cross', [author(2), author(2), author(3), author(3)]),
+  ]));
+  const graph = new GraphState();
+  await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
+  expect(graph.edgeCount).toBe(3);
+  expect(graph.getEdges().map(edge => edge.weight).sort()).toEqual([1, 1, 2]);
+  expect([...graph.getNeighborIds('1')].sort()).toEqual(['2', '3']);
+  expect(graph.getEdges().every(edge => !('paperIds' in edge))).toBe(true);
+});
+
+it('deduplicates papers across split queries and root pages', async () => {
+  const root = paper('root', [author(1), author(2), author(3)]);
+  const cross = paper('cross', [author(2), author(2), author(3)]);
+  vi.mocked(fetchPublications).mockImplementation(async bai => response(
+    bai === 'Author.1' ? [root] : [root, cross],
+  ));
+  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([], 10001));
+  const graph = new GraphState();
+  await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
+  expect(graph.getEdges().map(edge => edge.weight).sort()).toEqual([1, 1, 2]);
 });

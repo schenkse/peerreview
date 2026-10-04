@@ -15,8 +15,8 @@ function graphView(touch = false) {
   for (let recid = 1; recid <= 3; recid++) {
     graph.addNode({ id: String(recid), recid, name: `Author ${recid}`, isRoot: recid === 1 });
   }
-  graph.addOrUpdateEdge('1', '2', 'a');
-  graph.addOrUpdateEdge('2', '3', 'b');
+  graph.addOrUpdateEdge('1', '2');
+  graph.addOrUpdateEdge('2', '3');
   svg.selectAll('.edge').data(graph.getEdges()).enter().append('path').attr('class', 'edge');
   const nodes = svg.selectAll('.node').data(graph.getNodes()).enter().append('circle').attr('class', 'node');
   nodes.each(function (node) { setupHover(this, node, graph, svg); });

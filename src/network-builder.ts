@@ -163,11 +163,10 @@ export class NetworkBuilder {
           const bai = author.ids?.find(id => id.schema === 'INSPIRE BAI')?.value;
           if (bai) coauthorBais.set(authorId, bai);
           this.graphState.addNode({ id: authorId, recid: author.recid, name: author.full_name, bai, isRoot: false });
-          this.graphState.addOrUpdateEdge(String(recid), authorId, pub.id);
         }
       }
       // These papers already establish connections between the root's coauthors.
-      this.addCrossEdges(pubs, seenPapers);
+      this.addCrossEdges(pubs, seenPapers, String(recid));
     } finally {
       this.graphState.endBatch();
     }
@@ -225,17 +224,21 @@ export class NetworkBuilder {
     return failures[0] + failures[1];
   }
 
-  private addCrossEdges(pubs: InspirePubHit[], seenPapers: Set<string>): void {
+  private addCrossEdges(pubs: InspirePubHit[], seenPapers: Set<string>, rootId?: string): void {
     this.graphState.beginBatch();
     try {
       for (const pub of pubs) {
         if (seenPapers.has(pub.id)) continue;
         seenPapers.add(pub.id);
-        const ids = pub.metadata.authors.filter(author => author.recid && this.graphState.hasNode(String(author.recid)))
-          .map(author => String(author.recid));
+        const authorIds = new Set(pub.metadata.authors
+          .filter(author => author.recid && this.graphState.hasNode(String(author.recid)))
+          .map(author => String(author.recid)));
+        // Root queries establish authorship even when the API omits the root record.
+        if (rootId) authorIds.add(rootId);
+        const ids = [...authorIds];
         for (let i = 0; i < ids.length; i++) {
           for (let j = i + 1; j < ids.length; j++) {
-            this.graphState.addOrUpdateEdge(ids[i], ids[j], pub.id);
+            this.graphState.addOrUpdateEdge(ids[i], ids[j]);
           }
         }
       }
