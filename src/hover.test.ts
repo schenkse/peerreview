@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as d3 from 'd3';
 import { GraphState } from './graph-state';
-import { clearHighlight, setupHover } from './hover';
+import { HoverController } from './hover';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -10,7 +10,6 @@ function graphView(touch = false) {
   vi.stubGlobal('matchMedia', () => ({ matches: touch }));
   document.body.innerHTML = '<svg></svg>';
   const svg = d3.select(document.querySelector('svg')!);
-  clearHighlight(svg);
   const graph = new GraphState();
   for (let recid = 1; recid <= 3; recid++) {
     graph.addNode({ id: String(recid), recid, name: `Author ${recid}`, isRoot: recid === 1 });
@@ -19,8 +18,9 @@ function graphView(touch = false) {
   graph.addOrUpdateEdge('2', '3');
   svg.selectAll('.edge').data(graph.getEdges()).enter().append('path').attr('class', 'edge');
   const nodes = svg.selectAll('.node').data(graph.getNodes()).enter().append('circle').attr('class', 'node');
-  nodes.each(function (node) { setupHover(this, node, graph, svg); });
-  return { graph, svg, circles: nodes.nodes() };
+  const hover = new HoverController(graph, svg);
+  nodes.each(function (node) { hover.attach(this, node); });
+  return { graph, svg, hover, circles: nodes.nodes() };
 }
 
 describe('graph highlighting', () => {
@@ -46,4 +46,17 @@ describe('graph highlighting', () => {
     circles[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(document.querySelectorAll('.highlighted, .dimmed, .pulse')).toHaveLength(0);
   });
+});
+
+
+it('keeps touch locks local to each graph and clears them on background clicks', () => {
+  const first = graphView(true);
+  const second = graphView(true);
+  first.circles[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  second.circles[1].dispatchEvent(new MouseEvent('mouseenter'));
+  second.circles[1].dispatchEvent(new MouseEvent('mouseleave'));
+  expect(first.circles[0].classList.contains('pulse')).toBe(true);
+  expect(second.svg.selectAll('.highlighted').size()).toBe(0);
+  first.svg.node()!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  expect(first.svg.selectAll('.highlighted, .dimmed, .pulse').size()).toBe(0);
 });

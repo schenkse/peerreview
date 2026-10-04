@@ -125,3 +125,37 @@ it('updates capped edge widths without refreshing strengths or reheating', () =>
   expect(restart).not.toHaveBeenCalled();
   expect(simulation.alpha()).toBe(0);
 });
+
+
+it.each([false, true])('refreshes active highlights as topology grows, touch=%s', touch => {
+  vi.stubGlobal('matchMedia', () => ({ matches: touch }));
+  graph.clear();
+  graph.beginBatch();
+  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
+  graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false });
+  graph.addOrUpdateEdge('1', '2');
+  graph.endBatch();
+  const root = document.querySelector('.node[data-id="1"]')!;
+  root.dispatchEvent(new MouseEvent(touch ? 'click' : 'mouseenter', { bubbles: touch }));
+  graph.beginBatch();
+  graph.addNode({ id: '3', recid: 3, name: 'New neighbor', isRoot: false });
+  graph.addNode({ id: '4', recid: 4, name: 'Unconnected', isRoot: false });
+  graph.addOrUpdateEdge('1', '3');
+  graph.endBatch();
+  expect(document.querySelector('.node[data-id="3"]')?.classList.contains('highlighted')).toBe(true);
+  expect(document.querySelector('.label-group[data-id="3"]')?.classList.contains('highlighted')).toBe(true);
+  expect(document.querySelector('.node[data-id="4"]')?.classList.contains('dimmed')).toBe(true);
+  expect(document.querySelectorAll('.edge.highlighted')).toHaveLength(2);
+  graph.addOrUpdateEdge('1', '4');
+  expect(document.querySelector('.node[data-id="4"]')?.classList.contains('highlighted')).toBe(true);
+  if (touch) {
+    root.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(root.classList.contains('pulse')).toBe(true);
+    document.querySelector('svg')!.dispatchEvent(new MouseEvent('click'));
+  } else root.dispatchEvent(new MouseEvent('mouseleave'));
+  expect(document.querySelectorAll('.highlighted, .dimmed, .pulse')).toHaveLength(0);
+  root.dispatchEvent(new MouseEvent(touch ? 'click' : 'mouseenter'));
+  graph.clear();
+  graph.addNode({ id: '1', recid: 1, name: 'Next root', isRoot: true });
+  expect(document.querySelectorAll('.highlighted, .dimmed, .pulse')).toHaveLength(0);
+});

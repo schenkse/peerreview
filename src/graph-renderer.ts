@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import type { AuthorNode, CoauthorEdge } from './types';
 import type { GraphState } from './graph-state';
-import { setupHover, clearHighlight } from './hover';
+import { HoverController } from './hover';
 
 // Larger networks label only the root and this many best-connected co-authors;
 // the rest show their names on hover. Networks up to ALL_LABELS_MAX co-authors label everyone.
@@ -14,6 +14,7 @@ export class GraphRenderer {
   private linkGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private nodeGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private labelGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
+  private hover: HoverController;
   private simulation: d3.Simulation<AuthorNode, CoauthorEdge>;
   private zoom!: d3.ZoomBehavior<SVGSVGElement, unknown>;
   private width: number;
@@ -63,7 +64,7 @@ export class GraphRenderer {
     this.svg.call(this.zoom);
 
     // On touch devices, tapping the graph background clears any locked highlight
-    this.svg.on('click', () => clearHighlight(this.svg));
+    this.hover = new HoverController(graphState, this.svg);
 
     // Force simulation
     this.simulation = d3
@@ -116,7 +117,7 @@ export class GraphRenderer {
   }
 
   reset(): void {
-    clearHighlight(this.svg);
+    this.hover.clear();
     this.linkGroup.selectAll('*').remove();
     this.nodeGroup.selectAll('*').remove();
     this.labelGroup.selectAll('*').remove();
@@ -225,7 +226,7 @@ export class GraphRenderer {
 
     // Attach hover to new nodes
     nodeEnter.each((d, i, nodes) => {
-      setupHover(nodes[i] as SVGCircleElement, d, this.graphState, this.svg);
+      this.hover.attach(nodes[i] as SVGCircleElement, d);
     });
 
     nodeSel.merge(nodeEnter).attr('r', (d) => this.nodeRadius(d));
@@ -252,6 +253,8 @@ export class GraphRenderer {
     const labelled = this.labelledIds(nodes);
     labelSel.merge(labelEnter).classed('minor', (d) => !labelled.has(d.id));
     this.refreshLabels();
+
+    this.hover.refresh();
 
     // Reheat gently
     this.simulation.alpha(0.3).restart();
