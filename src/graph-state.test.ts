@@ -29,7 +29,7 @@ describe('GraphState nodes', () => {
     s.on('changed', (p) => seen.push(p));
     s.updateNodeName('1', 'New Name');
     expect(s.getNode('1')?.name).toBe('New Name');
-    expect(seen).toEqual([{ layoutChanged: false }]);
+    expect(seen).toEqual([{ topologyChanged: false, weightsChanged: false, labelsChanged: true }]);
   });
 
   it('updateNodeName is a no-op when the name is unchanged', () => {
@@ -90,7 +90,7 @@ describe('GraphState batching', () => {
     s.addNode(node('2'));
     expect(batches).toHaveLength(0);
     s.endBatch();
-    expect(batches).toEqual([{ layoutChanged: true }]);
+    expect(batches).toEqual([{ topologyChanged: true, weightsChanged: false, labelsChanged: false }]);
   });
 
   it('does not emit a change when nothing changed', () => {
@@ -129,4 +129,22 @@ describe('GraphState clear', () => {
     expect(s.edgeCount).toBe(0);
     expect(cleared).toHaveLength(1);
   });
+});
+
+
+it('combines topology, weights, and labels in nested batches', () => {
+  const graph = new GraphState();
+  graph.addNode(node('1'));
+  graph.addNode(node('2'));
+  graph.addOrUpdateEdge('1', '2');
+  const changed: unknown[] = [];
+  graph.on('changed', change => changed.push(change));
+  graph.beginBatch();
+  graph.updateNodeName('1', 'New name');
+  graph.beginBatch();
+  graph.addOrUpdateEdge('1', '2');
+  graph.addNode(node('3'));
+  graph.endBatch();
+  graph.endBatch();
+  expect(changed).toEqual([{ topologyChanged: true, weightsChanged: true, labelsChanged: true }]);
 });

@@ -19,6 +19,7 @@ export class GraphRenderer {
   private width: number;
   private height: number;
   private resizeAbort = new AbortController();
+  private linkStrengths = new Map<CoauthorEdge, number>();
   private degreeMap = new Map<string, number>();
 
   constructor(
@@ -73,7 +74,7 @@ export class GraphRenderer {
           .forceLink<AuthorNode, CoauthorEdge>([])
           .id((d) => d.id)
           .distance(150)
-          .strength((link) => Math.min((link as CoauthorEdge).weight * 0.1, 1)),
+          .strength(link => this.linkStrengths.get(link) ?? 0),
       )
       .force('charge', d3.forceManyBody().strength(-300).distanceMax(500))
       .force(
@@ -85,8 +86,11 @@ export class GraphRenderer {
 
     // Label edits do not change forces or node positions.
     graphState.on('changed', (change) => {
-      if (change.layoutChanged) this.updateSimulation();
-      else this.refreshLabels();
+      if (change.topologyChanged) this.updateSimulation();
+      else {
+        if (change.weightsChanged) this.updateWeights();
+        if (change.labelsChanged) this.refreshLabels();
+      }
     });
     graphState.on('cleared', () => this.reset());
 
@@ -116,6 +120,7 @@ export class GraphRenderer {
     this.linkGroup.selectAll('*').remove();
     this.nodeGroup.selectAll('*').remove();
     this.labelGroup.selectAll('*').remove();
+    this.linkStrengths.clear();
     this.simulation.nodes([]);
     (this.simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>).links([]);
     this.simulation.alpha(0).stop();
@@ -171,6 +176,8 @@ export class GraphRenderer {
       this.degreeMap.set(s, (this.degreeMap.get(s) ?? 0) + 1);
       this.degreeMap.set(t, (this.degreeMap.get(t) ?? 0) + 1);
     }
+
+    this.linkStrengths = new Map(edges.map(edge => [edge, Math.min(edge.weight * 0.1, 1)]));
 
     // Update simulation data
     this.simulation.nodes(nodes);
@@ -247,6 +254,24 @@ export class GraphRenderer {
     this.refreshLabels();
 
     // Reheat gently
+    this.simulation.alpha(0.3).restart();
+  }
+
+  private updateWeights(): void {
+    this.linkGroup.selectAll<SVGPathElement, CoauthorEdge>('path')
+      .attr('stroke-width', edge => Math.sqrt(edge.weight) * 1.25);
+    let strengthChanged = false;
+    for (const [edge, previous] of this.linkStrengths) {
+      const strength = Math.min(edge.weight * 0.1, 1);
+      if (strength !== previous) {
+        this.linkStrengths.set(edge, strength);
+        strengthChanged = true;
+      }
+    }
+    if (!strengthChanged) return;
+    const linkForce = this.simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>;
+    // D3 caches strengths, so changing weights requires refreshing the accessor.
+    linkForce.strength(linkForce.strength());
     this.simulation.alpha(0.3).restart();
   }
 

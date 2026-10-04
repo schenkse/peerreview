@@ -90,3 +90,38 @@ describe('GraphRenderer appearance updates', () => {
     expect(labelled.sort()).toEqual(['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'r']);
   });
 });
+
+
+it('updates weights without rebuilding nodes, collision forces, or DOM joins', () => {
+  const collide = simulation.force('collide');
+  const node = graph.getNode('2')!;
+  const position = [node.x, node.y];
+  const elements = [...document.querySelectorAll('.node, .edge, .label-group')];
+  const nodes = vi.spyOn(simulation, 'nodes');
+  const force = simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>;
+  const links = vi.spyOn(force, 'links');
+  const strength = vi.spyOn(force, 'strength');
+  graph.addOrUpdateEdge('1', '2');
+  expect(nodes).not.toHaveBeenCalled();
+  expect(links).not.toHaveBeenCalled();
+  expect(strength).toHaveBeenCalledWith(expect.any(Function));
+  expect(force.strength()(graph.getEdges()[0], 0, graph.getEdges())).toBe(0.2);
+  expect(simulation.force('collide')).toBe(collide);
+  expect([node.x, node.y]).toEqual(position);
+  expect([...document.querySelectorAll('.node, .edge, .label-group')]).toEqual(elements);
+});
+
+it('updates capped edge widths without refreshing strengths or reheating', () => {
+  graph.beginBatch();
+  for (let i = 1; i < 10; i++) graph.addOrUpdateEdge('1', '2');
+  graph.endBatch();
+  simulation.stop().alpha(0);
+  const restart = vi.spyOn(simulation, 'restart');
+  const force = simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>;
+  const strength = vi.spyOn(force, 'strength');
+  graph.addOrUpdateEdge('1', '2');
+  expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(11) * 1.25));
+  expect(strength).not.toHaveBeenCalled();
+  expect(restart).not.toHaveBeenCalled();
+  expect(simulation.alpha()).toBe(0);
+});

@@ -79,7 +79,9 @@ export interface NetworkProgress {
 // --- Event types ---
 
 export interface GraphChange {
-  layoutChanged: boolean;
+  topologyChanged: boolean;
+  weightsChanged: boolean;
+  labelsChanged: boolean;
 }
 
 export type GraphEvent = 'changed' | 'cleared';

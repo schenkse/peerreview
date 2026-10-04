@@ -1,5 +1,7 @@
 import type { AuthorNode, CoauthorEdge, GraphChange, GraphEvent } from './types';
 
+const unchanged = (): GraphChange => ({ topologyChanged: false, weightsChanged: false, labelsChanged: false });
+
 type Listener = (change: GraphChange) => void;
 
 export class GraphState {
@@ -9,7 +11,7 @@ export class GraphState {
   private listeners = new Map<GraphEvent, Set<Listener>>();
   private batchDepth = 0;
   private batchDirty = false;
-  private batchLayoutChanged = false;
+  private batchChanges = unchanged();
 
   // --- Queries ---
 
@@ -46,7 +48,7 @@ export class GraphState {
   addNode(node: AuthorNode): boolean {
     if (this.nodes.has(node.id)) return false;
     this.nodes.set(node.id, node);
-    this.emitOrBatch(true);
+    this.emitOrBatch('topologyChanged');
     return true;
   }
 
@@ -54,7 +56,7 @@ export class GraphState {
     const node = this.nodes.get(id);
     if (!node || node.name === name) return;
     node.name = name;
-    this.emitOrBatch(false);
+    this.emitOrBatch('labelsChanged');
   }
 
   addOrUpdateEdge(sourceId: string, targetId: string): void {
@@ -65,7 +67,7 @@ export class GraphState {
 
     if (existing) {
       existing.weight++;
-      this.emitOrBatch(true);
+      this.emitOrBatch('weightsChanged');
     } else {
       const edge: CoauthorEdge = {
         source: sourceId,
@@ -79,7 +81,7 @@ export class GraphState {
       this.adjacency.get(sourceId)!.add(targetId);
       this.adjacency.get(targetId)!.add(sourceId);
 
-      this.emitOrBatch(true);
+      this.emitOrBatch('topologyChanged');
     }
   }
 
@@ -89,8 +91,8 @@ export class GraphState {
     this.adjacency.clear();
     this.batchDepth = 0;
     this.batchDirty = false;
-    this.batchLayoutChanged = false;
-    this.emit('cleared', { layoutChanged: true });
+    this.batchChanges = unchanged();
+    this.emit('cleared', { ...unchanged(), topologyChanged: true });
   }
 
   // --- Batch support ---
@@ -98,7 +100,7 @@ export class GraphState {
   beginBatch(): void {
     if (this.batchDepth === 0) {
       this.batchDirty = false;
-      this.batchLayoutChanged = false;
+      this.batchChanges = unchanged();
     }
     this.batchDepth++;
   }
@@ -107,7 +109,9 @@ export class GraphState {
     this.batchDepth--;
     if (this.batchDepth === 0 && this.batchDirty) {
       this.batchDirty = false;
-      this.emit('changed', { layoutChanged: this.batchLayoutChanged });
+      const changes = this.batchChanges;
+      this.batchChanges = unchanged();
+      this.emit('changed', changes);
     }
   }
 
@@ -131,12 +135,12 @@ export class GraphState {
     }
   }
 
-  private emitOrBatch(layoutChanged: boolean): void {
+  private emitOrBatch(field: keyof GraphChange): void {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
-      this.batchLayoutChanged ||= layoutChanged;
+      this.batchChanges[field] = true;
     } else {
-      this.emit('changed', { layoutChanged });
+      this.emit('changed', { ...unchanged(), [field]: true });
     }
   }
 
