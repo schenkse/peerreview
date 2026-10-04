@@ -1,4 +1,4 @@
-import { ApiError, fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
+import { ApiError, fetchAuthorProfiles, fetchPublications, fetchConnectionPublications, fetchConnectionPublicationsBatch } from './api';
 import {
   AUTHOR_PROFILE_CHUNK_SIZE,
   COAUTHOR_BATCH_CHUNK_SIZE,
@@ -6,7 +6,7 @@ import {
   MAX_RESULT_WINDOW,
 } from './constants';
 import type { GraphState } from './graph-state';
-import type { InspirePubHit, NetworkProgress } from './types';
+import type { InspirePubHit, InspireConnectionPubHit, InspireSearchResponse, NetworkProgress } from './types';
 
 export type ProgressCallback = (progress: NetworkProgress) => void;
 
@@ -54,7 +54,7 @@ export class NetworkBuilder {
       const coauthorBais = new Map<string, string>(); // recid -> BAI
       const seenPapers = new Set<string>();
       const publications = await this.fetchPublicationPages(
-        [bai],
+        page => fetchPublications(bai, page, signal),
         signal,
         pubs => this.addRootPublications(pubs, recid, coauthorBais, seenPapers),
         (completedPages, totalPages) => {
@@ -172,26 +172,22 @@ export class NetworkBuilder {
     }
   }
 
-  private fetchPublicationPages(
-    bais: string[],
+  private fetchPublicationPages<T extends { id: string }>(
+    fetchPage: (page: number) => Promise<InspireSearchResponse<T>>,
     signal: AbortSignal,
-    onItems: (pubs: InspirePubHit[]) => void,
+    onItems: (pubs: T[]) => void,
     onPageProgress?: (completedPages: number, totalPages: number) => void,
+    stopOnOverflow = false,
   ): Promise<PaginationResult> {
-    return visitPaginated<InspirePubHit>(
-      (page) => (bais.length === 1
-        ? fetchPublications(bais[0], page, signal)
-        : fetchPublicationsBatch(bais, page, signal)).then((r) => ({
-          items: r.hits.hits,
-          total: r.hits.total,
-        })),
+    return visitPaginated<T>(
+      page => fetchPage(page).then(r => ({ items: r.hits.hits, total: r.hits.total })),
       {
         itemId: pub => pub.id,
         pageSize: DEFAULT_PAGE_SIZE,
         maxWindow: MAX_RESULT_WINDOW,
         signal,
         onItems,
-        stopOnOverflow: bais.length > 1,
+        stopOnOverflow,
         onPage: onPageProgress
           ? (page, total) =>
               onPageProgress(page, Math.max(1, Math.ceil(total / DEFAULT_PAGE_SIZE)))
@@ -204,7 +200,12 @@ export class NetworkBuilder {
   private async fetchCoauthorConnections(bais: string[], signal: AbortSignal, seenPapers: Set<string>): Promise<number> {
     signal.throwIfAborted();
     try {
-      const result = await this.fetchPublicationPages(bais, signal, pubs => this.addCrossEdges(pubs, seenPapers));
+      const result = await this.fetchPublicationPages(
+        page => bais.length === 1
+          ? fetchConnectionPublications(bais[0], page, signal)
+          : fetchConnectionPublicationsBatch(bais, page, signal),
+        signal, pubs => this.addCrossEdges(pubs, seenPapers), undefined, bais.length > 1,
+      );
       signal.throwIfAborted();
       if (result.complete || bais.length === 1 || result.total <= MAX_RESULT_WINDOW) {
         return result.complete ? 0 : bais.length;
@@ -224,7 +225,7 @@ export class NetworkBuilder {
     return failures[0] + failures[1];
   }
 
-  private addCrossEdges(pubs: InspirePubHit[], seenPapers: Set<string>, rootId?: string): void {
+  private addCrossEdges(pubs: InspireConnectionPubHit[], seenPapers: Set<string>, rootId?: string): void {
     this.graphState.beginBatch();
     try {
       for (const pub of pubs) {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, fetchAuthorProfiles, fetchPublications, fetchPublicationsBatch } from './api';
+import { ApiError, fetchAuthorProfiles, fetchConnectionPublications, fetchPublications, fetchConnectionPublicationsBatch } from './api';
 import { GraphState } from './graph-state';
 import { NetworkBuilder } from './network-builder';
 import type { InspirePubAuthor, InspirePubHit, InspireSearchResponse } from './types';
@@ -7,7 +7,8 @@ import type { InspirePubAuthor, InspirePubHit, InspireSearchResponse } from './t
 vi.mock('./api', async original => ({
   ...await original<typeof import('./api')>(),
   fetchPublications: vi.fn(),
-  fetchPublicationsBatch: vi.fn(),
+  fetchConnectionPublications: vi.fn(),
+  fetchConnectionPublicationsBatch: vi.fn(),
   fetchAuthorProfiles: vi.fn(),
 }));
 
@@ -29,9 +30,15 @@ function paper(id: string, authors: InspirePubAuthor[]): InspirePubHit {
   return { id, metadata: { authors } };
 }
 
+function mockPublicationQueries(implementation: (bai: string, page?: number, signal?: AbortSignal) => Promise<InspireSearchResponse<InspirePubHit>>) {
+  vi.mocked(fetchPublications).mockImplementation(implementation);
+  vi.mocked(fetchConnectionPublications).mockImplementation(implementation);
+}
+
 beforeEach(() => {
   vi.mocked(fetchPublications).mockResolvedValue(response([paper('root', [author(1), author(2)])]));
-  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([]));
+  vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([]));
+  vi.mocked(fetchConnectionPublications).mockResolvedValue(response([]));
   vi.mocked(fetchAuthorProfiles).mockResolvedValue(response([]));
 });
 
@@ -58,12 +65,12 @@ describe('NetworkBuilder cancellation', () => {
   it('does not emit done or mutate the graph when cancelled cross-links and profiles finish', async () => {
     vi.mocked(fetchPublications).mockResolvedValueOnce(response([paper('root', [author(1), author(2), author(3)])]));
     const batch = deferred<InspireSearchResponse<InspirePubHit>>();
-    vi.mocked(fetchPublicationsBatch).mockReturnValueOnce(batch.promise);
+    vi.mocked(fetchConnectionPublicationsBatch).mockReturnValueOnce(batch.promise);
     const graph = new GraphState();
     const builder = new NetworkBuilder(graph);
     const progress = vi.fn();
     const pending = builder.build('Author.1', 'Root', 1, progress);
-    await vi.waitFor(() => expect(fetchPublicationsBatch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(fetchConnectionPublicationsBatch).toHaveBeenCalled());
     builder.cancel();
     graph.clear();
     batch.resolve(response([paper('late', [author(1), author(2)])]));
@@ -76,7 +83,7 @@ describe('NetworkBuilder cancellation', () => {
 
 describe('NetworkBuilder author profiles', () => {
   it('recovers missing publication identifiers and enriches every coauthor', async () => {
-    vi.mocked(fetchPublications).mockImplementation(async bai => response([
+    mockPublicationQueries(async bai => response([
       bai === 'Author.1'
         ? paper('root', [{ recid: 1, full_name: 'Root' }, { recid: 2, full_name: 'Initial name' }])
         : paper('cross', [author(1), author(2)]),
@@ -89,7 +96,7 @@ describe('NetworkBuilder author profiles', () => {
     const progress = vi.fn();
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
     expect(fetchAuthorProfiles).toHaveBeenCalledWith([2], expect.any(AbortSignal));
-    expect(fetchPublications).toHaveBeenCalledWith('Recovered.2', 1, expect.any(AbortSignal));
+    expect(fetchConnectionPublications).toHaveBeenCalledWith('Recovered.2', 1, expect.any(AbortSignal));
     expect(graph.getNode('2')).toMatchObject({ name: 'Canonical name', bai: 'Recovered.2' });
     expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
   });
@@ -120,7 +127,7 @@ describe('NetworkBuilder author profiles', () => {
     profiles.resolve(response([]));
     await pending;
     expect(graph.nodeCount).toBe(0);
-    expect(fetchPublicationsBatch).not.toHaveBeenCalled();
+    expect(fetchConnectionPublicationsBatch).not.toHaveBeenCalled();
     expect(progress.mock.calls.some(([p]) => p.phase === 'done')).toBe(false);
   });
 });
@@ -128,7 +135,7 @@ describe('NetworkBuilder author profiles', () => {
 describe('NetworkBuilder completeness', () => {
   it('renders root pages before later pages finish loading', async () => {
     const second = deferred<InspireSearchResponse<InspirePubHit>>();
-    vi.mocked(fetchPublications).mockImplementation((_bai, page) => page === 1
+    mockPublicationQueries((_bai, page) => page === 1
       ? Promise.resolve(response([paper('first', [author(1), author(2)])], 2))
       : second.promise,
     );
@@ -144,23 +151,23 @@ describe('NetworkBuilder completeness', () => {
     expect(graph.hasNode('3')).toBe(false);
   });
   it('splits incomplete batches and includes publications from both halves', async () => {
-    vi.mocked(fetchPublications).mockImplementation(async (bai) => response([
+    mockPublicationQueries(async (bai) => response([
       bai === 'Author.1'
         ? paper('root', [author(1), author(2), author(3)])
         : paper(`cross-${bai}`, [author(2), author(3)]),
     ]));
-    vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([], 10001));
+    vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([], 10001));
     const graph = new GraphState();
     const progress = vi.fn();
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
-    expect(fetchPublications).toHaveBeenCalledWith('Author.2', 1, expect.any(AbortSignal));
-    expect(fetchPublications).toHaveBeenCalledWith('Author.3', 1, expect.any(AbortSignal));
+    expect(fetchConnectionPublications).toHaveBeenCalledWith('Author.2', 1, expect.any(AbortSignal));
+    expect(fetchConnectionPublications).toHaveBeenCalledWith('Author.3', 1, expect.any(AbortSignal));
     expect(graph.getEdges().find(e => [e.source, e.target].includes('2') && [e.source, e.target].includes('3'))?.weight).toBe(3);
     expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
   });
 
   it('reports root truncation instead of presenting the graph as complete', async () => {
-    vi.mocked(fetchPublications).mockImplementation(async (_bai, page) =>
+    mockPublicationQueries(async (_bai, page) =>
       response([paper(`root-${page}`, [author(1)])], 10001),
     );
     const progress = vi.fn();
@@ -171,11 +178,11 @@ describe('NetworkBuilder completeness', () => {
   });
 
   it('reports incomplete individual authors after splitting a batch', async () => {
-    vi.mocked(fetchPublications).mockImplementation(async (bai) => bai === 'Author.1'
+    mockPublicationQueries(async (bai) => bai === 'Author.1'
       ? response([paper('root', [author(1), author(2), author(3)])])
       : response([], 1),
     );
-    vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([], 10001));
+    vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([], 10001));
     const progress = vi.fn();
     await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
     expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
@@ -190,14 +197,14 @@ describe('NetworkBuilder publication reuse', () => {
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
     expect(graph.edgeCount).toBe(3);
     expect(graph.getNeighborIds('2').has('3')).toBe(true);
-    expect(fetchPublicationsBatch).not.toHaveBeenCalled();
+    expect(fetchConnectionPublicationsBatch).not.toHaveBeenCalled();
   });
 
   it('skips repeated papers across overlapping pages while preserving weights', async () => {
     const root = paper('root', [author(1), author(2), author(3)]);
     const cross = paper('cross', [author(2), author(3)]);
     vi.mocked(fetchPublications).mockResolvedValueOnce(response([root]));
-    vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([root, cross, cross]));
+    vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([root, cross, cross]));
     const graph = new GraphState();
     const updateEdge = vi.spyOn(graph, 'addOrUpdateEdge');
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
@@ -213,10 +220,10 @@ describe('NetworkBuilder query failures', () => {
     'reports a partial graph without splitting %s', async error => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.mocked(fetchPublications).mockResolvedValue(response([paper('root', [author(1), author(2), author(3)])]));
-      vi.mocked(fetchPublicationsBatch).mockRejectedValue(error);
+      vi.mocked(fetchConnectionPublicationsBatch).mockRejectedValue(error);
       const progress = vi.fn();
       await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
-      expect(fetchPublicationsBatch).toHaveBeenCalledOnce();
+      expect(fetchConnectionPublicationsBatch).toHaveBeenCalledOnce();
       expect(fetchPublications).toHaveBeenCalledOnce();
       expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({ phase: 'done' });
       expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
@@ -224,28 +231,29 @@ describe('NetworkBuilder query failures', () => {
   );
 
   it.each([400, 414])('splits HTTP %s query failures', async status => {
-    vi.mocked(fetchPublications).mockImplementation(async bai => response([
+    mockPublicationQueries(async bai => response([
       bai === 'Author.1' ? paper('root', [author(1), author(2), author(3)]) : paper(bai, [author(2), author(3)]),
     ]));
-    vi.mocked(fetchPublicationsBatch).mockRejectedValue(new ApiError(status, 'Query failure'));
+    vi.mocked(fetchConnectionPublicationsBatch).mockRejectedValue(new ApiError(status, 'Query failure'));
     const progress = vi.fn();
     await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
-    expect(fetchPublications).toHaveBeenCalledTimes(3);
+    expect(fetchPublications).toHaveBeenCalledOnce();
+    expect(fetchConnectionPublications).toHaveBeenCalledTimes(2);
     expect(progress.mock.calls.at(-1)?.[0].message).toMatch(/^Done\./);
   });
 
   it('lets other batches finish after a service failure', async () => {
-    vi.mocked(fetchPublications).mockImplementation(async bai => response(bai === 'Author.1'
+    mockPublicationQueries(async bai => response(bai === 'Author.1'
       ? Array.from({ length: 52 }, (_, i) => paper(`root-${i}`, [author(1), author(i + 2)]))
       : [paper('successful', [author(52), author(53)])]));
-    vi.mocked(fetchPublicationsBatch).mockImplementation(async bais => {
+    vi.mocked(fetchConnectionPublicationsBatch).mockImplementation(async bais => {
       if (bais.includes('Author.2')) throw new ApiError(500, 'Unavailable');
       return response([paper('successful', [author(52), author(53)])]);
     });
     const graph = new GraphState();
     const progress = vi.fn();
     await new NetworkBuilder(graph).build('Author.1', 'Root', 1, progress);
-    expect(fetchPublicationsBatch).toHaveBeenCalledTimes(2);
+    expect(fetchConnectionPublicationsBatch).toHaveBeenCalledTimes(2);
     expect(graph.getNeighborIds('52').has('53')).toBe(true);
     expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 50 co-authors are incomplete');
   });
@@ -262,7 +270,7 @@ it('retains valid profile fields and balances batches after malformed profiles',
     { metadata: { control_number: 3, name: { preferred_name: 42, value: 'Canonical 3' }, ids: {} } },
     { metadata: { control_number: 4, name: { value: 'Canonical 4' }, ids: [null] } },
   ] as unknown as import('./types').InspireAuthorHit[]));
-  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([paper('later', [author(2), author(4)])]));
+  vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([paper('later', [author(2), author(4)])]));
   const graph = new GraphState();
   const changed = vi.fn();
   graph.on('changed', changed);
@@ -271,7 +279,7 @@ it('retains valid profile fields and balances batches after malformed profiles',
   expect(graph.getNode('2')).toMatchObject({ name: 'Initial 2', bai: 'Recovered.2' });
   expect(graph.getNode('3')?.name).toBe('Canonical 3');
   expect(graph.getNode('4')?.name).toBe('Canonical 4');
-  expect(fetchPublicationsBatch).toHaveBeenCalledWith(['Author.4', 'Recovered.2'], 1, expect.any(AbortSignal));
+  expect(fetchConnectionPublicationsBatch).toHaveBeenCalledWith(['Author.4', 'Recovered.2'], 1, expect.any(AbortSignal));
   expect(graph.getEdges().find(e => e.source === '2' && e.target === '4')?.weight).toBe(2);
   changed.mockClear();
   graph.updateNodeName('2', 'After build');
@@ -283,11 +291,11 @@ it('retains valid profile fields and balances batches after malformed profiles',
 it('reports repeated root rows as incomplete and does not split incomplete connection rows', async () => {
   const root = paper('root', [author(1), author(2), author(3)]);
   vi.mocked(fetchPublications).mockResolvedValue(response([root, root], 2));
-  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([root, root], 2));
+  vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([root, root], 2));
   const progress = vi.fn();
   await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
   expect(fetchPublications).toHaveBeenCalledOnce();
-  expect(fetchPublicationsBatch).toHaveBeenCalledOnce();
+  expect(fetchConnectionPublicationsBatch).toHaveBeenCalledOnce();
   expect(progress.mock.calls.at(-1)?.[0].message).toContain('Root publications are incomplete (1/2 retrieved)');
   expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
 });
@@ -296,7 +304,7 @@ it('reports repeated root rows as incomplete and does not split incomplete conne
 it('counts each publication pair once with duplicate authors and missing root IDs', async () => {
   const missingRoot = paper('missing-root', [author(2), author(2), author(3), author(3)]);
   vi.mocked(fetchPublications).mockResolvedValueOnce(response([missingRoot, missingRoot]));
-  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([
+  vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([
     missingRoot, paper('cross', [author(2), author(2), author(3), author(3)]),
   ]));
   const graph = new GraphState();
@@ -310,11 +318,22 @@ it('counts each publication pair once with duplicate authors and missing root ID
 it('deduplicates papers across split queries and root pages', async () => {
   const root = paper('root', [author(1), author(2), author(3)]);
   const cross = paper('cross', [author(2), author(2), author(3)]);
-  vi.mocked(fetchPublications).mockImplementation(async bai => response(
+  mockPublicationQueries(async bai => response(
     bai === 'Author.1' ? [root] : [root, cross],
   ));
-  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([], 10001));
+  vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([], 10001));
   const graph = new GraphState();
   await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
   expect(graph.getEdges().map(edge => edge.weight).sort()).toEqual([1, 1, 2]);
+});
+
+
+it('builds connections from record-ID-only publication metadata', async () => {
+  vi.mocked(fetchPublications).mockResolvedValueOnce(response([paper('root', [author(1), author(2), author(3)])]));
+  vi.mocked(fetchConnectionPublicationsBatch).mockResolvedValue(response([
+    { id: 'connection', metadata: { authors: [{ recid: 2 }, { recid: 3 }] } },
+  ]));
+  const graph = new GraphState();
+  await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
+  expect(graph.getEdges().find(edge => edge.source === '2' && edge.target === '3')?.weight).toBe(2);
 });

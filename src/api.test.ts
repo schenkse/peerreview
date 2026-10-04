@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, searchAuthors } from './api';
+import { ApiError, searchAuthors, fetchPublications, fetchConnectionPublications, fetchConnectionPublicationsBatch, fetchAuthorProfiles } from './api';
 import { rateLimiter } from './rate-limiter';
 
 afterEach(() => vi.restoreAllMocks());
@@ -38,4 +38,22 @@ it('preserves the HTTP status in API errors', async () => {
   const error = await searchAuthors('query failure').catch(error => error);
   expect(error).toBeInstanceOf(ApiError);
   expect(error.status).toBe(414);
+});
+
+
+it('requests only the fields each operation consumes', async () => {
+  const enqueue = vi.spyOn(rateLimiter, 'enqueue').mockImplementation(async () =>
+    new Response(JSON.stringify({ hits: { hits: [], total: 0 } })),
+  );
+  await searchAuthors('field selection');
+  await fetchPublications('Root.fields');
+  await fetchConnectionPublications('Connection.fields');
+  await fetchConnectionPublicationsBatch(['Batch.one', 'Batch.two']);
+  await fetchAuthorProfiles([42]);
+  const urls = enqueue.mock.calls.map(([url]) => new URL(url));
+  expect(urls.map(url => url.searchParams.get('fields'))).toEqual([
+    'name,ids,positions,control_number,stub', 'authors.recid,authors.full_name,authors.ids',
+    'authors.recid', 'authors.recid', 'control_number,name,ids',
+  ]);
+  expect(urls[3].searchParams.get('q')).toBe('(a Batch.one or a Batch.two) and ac 1->10');
 });

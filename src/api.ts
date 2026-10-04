@@ -1,7 +1,7 @@
 import { INSPIRE_BASE_URL, DEFAULT_PAGE_SIZE, MAX_COAUTHOR_COUNT } from './constants';
 import { rateLimiter } from './rate-limiter';
 import { TtlCache } from './cache';
-import type { InspireAuthorHit, InspirePubHit, InspireSearchResponse } from './types';
+import type { InspireAuthorHit, InspirePubHit, InspireConnectionPubHit, InspireSearchResponse } from './types';
 
 export class ApiError extends Error {
   constructor(public readonly status: number, statusText: string) {
@@ -31,7 +31,8 @@ export function searchAuthors(
   query: string,
   signal?: AbortSignal,
 ): Promise<InspireSearchResponse<InspireAuthorHit>> {
-  const params = new URLSearchParams({ q: query, size: '10' });
+  const params = new URLSearchParams({ q: query, size: '10',
+    fields: 'name,ids,positions,control_number,stub' });
   return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
 }
 
@@ -49,19 +50,27 @@ export function fetchPublications(
   return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
 }
 
-export function fetchPublicationsBatch(
+export function fetchConnectionPublications(
+  bai: string,
+  page = 1,
+  signal?: AbortSignal,
+): Promise<InspireSearchResponse<InspireConnectionPubHit>> {
+  return fetchConnectionPublicationsBatch([bai], page, signal);
+}
+
+export function fetchConnectionPublicationsBatch(
   bais: string[],
   page = 1,
   signal?: AbortSignal,
-): Promise<InspireSearchResponse<InspirePubHit>> {
-  const disjunction = bais.map((b) => `a ${b}`).join(' or ');
+): Promise<InspireSearchResponse<InspireConnectionPubHit>> {
+  const disjunction = bais.map(bai => `a ${bai}`).join(' or ');
   const params = new URLSearchParams({
     q: `(${disjunction}) and ac 1->${MAX_COAUTHOR_COUNT}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'authors.recid,authors.full_name,authors.ids',
+    fields: 'authors.recid',
   });
-  return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
+  return request<InspireConnectionPubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
 }
 
 export function fetchAuthorProfiles(

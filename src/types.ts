@@ -31,6 +31,11 @@ export interface InspirePubHit {
   };
 }
 
+export interface InspireConnectionPubHit {
+  id: string;
+  metadata: { authors: { recid: number }[] };
+}
+
 export interface InspireSearchResponse<T> {
   hits: {
     total: number;
