@@ -187,6 +187,7 @@ export class NetworkBuilder {
           total: r.hits.total,
         })),
       {
+        itemId: pub => pub.id,
         pageSize: DEFAULT_PAGE_SIZE,
         maxWindow: MAX_RESULT_WINDOW,
         signal,
@@ -316,6 +317,7 @@ export interface PaginationResult {
 export async function visitPaginated<T>(
   fetchPage: (page: number) => Promise<PaginatedPage<T>>,
   options: {
+    itemId: (item: T) => string | number;
     pageSize: number;
     maxWindow: number;
     signal?: AbortSignal;
@@ -325,7 +327,8 @@ export async function visitPaginated<T>(
   },
 ): Promise<PaginationResult> {
   const { pageSize, maxWindow, signal, onItems, onPage } = options;
-  let count = 0;
+  const seenIds = new Set<string | number>();
+  let returnedRows = 0;
   let page = 1;
   let total = 0;
 
@@ -338,17 +341,23 @@ export async function visitPaginated<T>(
     total = result.total;
     // A disjunctive query can be split before downloading its remaining pages.
     if (options.stopOnOverflow && total > maxWindow) break;
-    count += items.length;
-    onItems?.(items);
+    returnedRows += items.length;
+    const uniqueItems = items.filter(item => {
+      const id = options.itemId(item);
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    });
+    onItems?.(uniqueItems);
     signal?.throwIfAborted();
     onPage?.(page, total);
 
     if (items.length === 0) break;          // no progress — stop (avoids infinite loop)
-    if (count >= total) break;               // visited everything
+    if (returnedRows >= total) break;               // visited everything
     if ((page + 1) * pageSize > maxWindow) break; // next page exceeds the result window
 
     page++;
   }
 
-  return { count, total, complete: count >= total };
+  return { count: seenIds.size, total, complete: seenIds.size >= total };
 }

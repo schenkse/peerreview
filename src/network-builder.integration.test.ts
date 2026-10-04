@@ -280,3 +280,16 @@ it('retains valid profile fields and balances batches after malformed profiles',
   expect(changed).toHaveBeenCalledOnce();
   expect(progress.mock.calls.at(-1)?.[0].phase).toBe('done');
 });
+
+
+it('reports repeated root rows as incomplete and does not split incomplete connection rows', async () => {
+  const root = paper('root', [author(1), author(2), author(3)]);
+  vi.mocked(fetchPublications).mockResolvedValue(response([root, root], 2));
+  vi.mocked(fetchPublicationsBatch).mockResolvedValue(response([root, root], 2));
+  const progress = vi.fn();
+  await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
+  expect(fetchPublications).toHaveBeenCalledOnce();
+  expect(fetchPublicationsBatch).toHaveBeenCalledOnce();
+  expect(progress.mock.calls.at(-1)?.[0].message).toContain('Root publications are incomplete (1/2 retrieved)');
+  expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
+});
