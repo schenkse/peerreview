@@ -2,19 +2,25 @@
 
 Visualize academic co-authorship networks for any researcher indexed on [InspireHEP](https://inspirehep.net). Search for a physicist by name and get an interactive graph showing who they've published with and how those collaborators connect to each other.
 
-> **Built with LLMs:** This project was developed with the assistance of AI language models, in particular [Claude Code](https://claude.ai/code) by Anthropic.
+> **Built with LLMs:** This project was developed with the assistance of AI language models, including [Claude Code](https://claude.ai/code) and OpenAI Codex.
 
 ## Features
 
-- **Live autocomplete** — search by name, pick from InspireHEP author suggestions
-- **Force-directed graph** — nodes are authors, edges are shared papers, thickness scales with collaboration strength
-- **Cross-link discovery** — co-author–to–co-author connections are fetched in the background and added as they arrive
-- **Live progress** — status bar tracks what's being fetched and how far along the build is
-- **Static deployment** — no server, no backend, no API key required
+- Live autocomplete with keyboard selection, loading messages, and retry after a failure
+- Force-directed SVG graph with edge thickness proportional to shared-paper counts
+- Automatic discovery of connections between existing co-authors
+- Live progress with persistent warnings when coverage is incomplete
+- Graph fitting that respects the header, status, and controls on desktop and mobile
+- Completed-network reuse for quick switching between recent researchers
+- Static deployment without a backend or API key
 
 ## Usage
 
-Type a researcher's name (e.g. `Higgs, Peter`) into the search box on the landing page, or pick one of the example searches, and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors, building the graph live as data arrives. In larger networks only the best-connected authors are labelled; hover over any node to highlight its direct collaborators and show their names. Click the PeerReview wordmark to return to the landing page.
+Type a researcher's name (e.g. `Higgs, Peter`) into the search box on the landing page, or pick one of the example searches, and select a result from the dropdown. PeerReview fetches their publications, extracts co-authors, then discovers connections between those co-authors, building the graph live as data arrives. In larger networks only the best-connected authors are labelled; hover over any node to highlight its direct collaborators and show their names. The graph fits automatically once fetching has established the root network and the layout settles. Panning, zooming, or dragging cancels that automatic fit; use the Fit graph control to fit explicitly. Click the PeerReview wordmark or mobile home icon to return to the landing page and focus the cleared search input.
+
+Only papers with at most ten contributors qualify. Explicit editors and supervisors do not count as co-authors. Partial results remain usable, and warnings about unresolved author entries, incomplete publications, or failed requests stay visible until another selection or home navigation. Successful completion messages disappear after five seconds.
+
+The three most recently completed networks are cached for ten minutes. Returning to one restores its authors and exact edge weights without publication requests. Partial networks are fetched again. Author responses have a separate 128-entry cache; publication pages are discarded after processing.
 
 ## Tech stack
 
@@ -41,13 +47,17 @@ npm run preview  # preview the production build locally
 
 ## Deployment
 
-`npm run build` produces a fully static `dist/` directory — no environment variables, no backend. Deploy it to GitHub Pages, Netlify, Vercel, Cloudflare Pages, or any web server by serving that folder.
+`npm run build` produces a fully static `dist/` directory without environment variables or a backend. Deploy it to GitHub Pages, Netlify, Vercel, Cloudflare Pages, or any web server by serving that folder.
 
-The GitHub Pages workflow runs the test suite and production build before deploying.
+The GitHub Pages workflow runs tests and builds on pull requests with read-only permissions. Deployment and artifact upload run only for main pushes or manual runs.
 
 ## InspireHEP API & rate limits
 
-All data comes from the public [InspireHEP REST API](https://github.com/inspirehep/rest-api-doc). InspireHEP enforces a limit of 15 requests per 5-second window; PeerReview handles this automatically with a sliding-window rate limiter. For researchers with many co-authors (50–100+), building the full network may take 1–2 minutes.
+All data comes from the public [InspireHEP REST API](https://github.com/inspirehep/rest-api-doc). InspireHEP enforces a limit of 15 requests per 5-second window; PeerReview handles this with a sliding-window rate limiter and server cooldowns. Interactive author searches take priority over queued background requests. For researchers with many co-authors (50–100+), building the full network may take one to two minutes.
+
+## Performance checks
+
+[docs/performance.md](docs/performance.md) records before/after cache memory and browser measurements, with commands to reproduce the publication benchmark, dense SVG probe, and desktop/mobile checks. Very dense SVG networks still have slow hover and zoom interactions.
 
 ## Acknowledgements
 

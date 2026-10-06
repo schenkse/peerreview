@@ -1,84 +1,102 @@
 # PeerReview
 
-Visualize academic co-authorship networks for any researcher indexed in [InspireHEP](https://inspirehep.net).
-Type a researcher's name, and PeerReview builds an interactive force-directed graph showing who they have published with, and how strongly those collaborators are connected to each other.
-If the user hovers over a node, the subgraph of the affected nodes and edges should be highlighted.
+PeerReview visualizes academic co-authorship networks using the
+[InspireHEP REST API](https://github.com/inspirehep/rest-api-doc). Selecting a
+researcher builds an SVG force-directed graph of their co-authors, then discovers
+connections between those existing authors automatically. Hover highlights the
+selected node, its neighbors, and edges within that subgraph. Touch selection
+stays highlighted until another tap or a background click.
 
-## How it works
+## Development
 
-1. You enter a researcher's name (e.g. `Higgs, Peter`).
-2. PeerReview finds their profile on InspireHEP and fetches their publication list.
-3. Each co-author becomes a node. The edge between two nodes is drawn thicker the more papers they share.
-4. In the background, PeerReview also fetches each co-author's publications to discover connections *between* co-authors — as long as both are already in the main researcher's network.
-5. The graph updates live as data arrives.
-
-> **Note:** Papers with more than 10 co-authors are skipped. This filters out large collaboration papers (e.g. ATLAS, CMS) that would otherwise flood the graph with hundreds of loosely-connected nodes.
-
-## Fetching the data
-
-### InspireHEP API
-
-InspireHEP provides a [REST-API](https://github.com/inspirehep/rest-api-doc).
-Each author has a unique Inspire BAI identifier, such as `Peter.W.Higgs.1`, which has to be fetched, such that all publications of the researcher and their co-authors are accurate.
-
-### API rate limits
-
-InspireHEP allows 15 requests per 5-second window.
-This has to be carefully taken into account for the user experience.
-
-## Tech stack
-
-The tech stack should be suitable for a modern and responsive web app.
-At the same time it should be very simple to deploy.
-We want to make it work locally first, and worry about deployment later.
-The user interface should be clean, sleek, modern and simplistic, with smooth animations.
-
-## Commands
-
-```bash
-npm run dev      # Start Vite dev server
-npm run build    # Type-check (tsc --noEmit) then bundle with Vite
-npm run preview  # Preview production build locally
+```sh
+npm run dev      # Vite development server
+npm test         # Vitest unit, network-building, and jsdom interaction tests
+npm run build    # Type-check with tsc, then bundle with Vite
+npm run preview  # Serve the production build locally
 ```
 
-No lint or test runner is configured.
+TypeScript uses `noEmit`; Vite transpiles. No lint runner is configured. Pull
+requests run tests and builds with read-only permissions. Main pushes and manual
+runs can upload the Pages artifact and deploy. PR concurrency is separate from
+Pages deployment.
 
 ## Architecture
 
-PeerReview visualizes academic co-authorship networks. The user searches for a researcher via the [InspireHEP](https://inspirehep.net) REST API; the app fetches their publications, extracts co-authors, then fetches each co-author's publications to discover inter-co-author edges. The result is rendered as a D3 force-directed graph.
+| Module | Responsibility |
+| --- | --- |
+| `src/main.ts` | Wire search, builder, renderer, progress, and view controls; preserve search focus when moving it between views |
+| `src/search.ts` | Debounced autocomplete, keyboard selection, loading/error messages, and immediate retry |
+| `src/api.ts` | REST wrappers; normalize publication identities and contributor roles once at the API boundary; cache typed author responses |
+| `src/rate-limiter.ts` | Sliding window, server headers, 429 cooldowns, bounded retries, timeouts, and interactive/background priorities |
+| `src/network-builder.ts` | Stream root publications, enrich co-author profiles, fetch connections, report coverage, and cache successful networks |
+| `src/graph-state.ts` | Domain nodes, weighted edges, adjacency, change events, nested batches, and snapshot capture/restore |
+| `src/graph-renderer.ts` | Renderer-owned D3 simulation records, SVG joins, frame-coalesced updates, zoom, and graph fitting |
+| `src/hover.ts` | Per-graph mouse selection and touch lock; apply highlight/dim classes and reveal labels |
+| `src/progress.ts` | Progress text and meter; dismiss successful completion after five seconds, retain partial/error messages |
+| `src/types.ts` | API/domain records, graph snapshots, change flags, and progress phases; no D3 simulation fields |
+| `src/cache.ts` | Bounded TTL cache with oldest-insertion eviction |
 
-**Module responsibilities** ([src/](src/)):
+## Data and fetching
 
-| File | Class/Export | Role |
-|---|---|---|
-| [main.ts](src/main.ts) | — | Instantiates all classes and wires event callbacks |
-| [search.ts](src/search.ts) | `SearchUI` | Debounced autocomplete → `onAuthorSelected(bai, name, recid)` |
-| [network-builder.ts](src/network-builder.ts) | `NetworkBuilder` | Three-phase fetch: root pubs → root co-authors → co-author cross-links |
-| [graph-state.ts](src/graph-state.ts) | `GraphState` | Event-emitting store for nodes/edges; batching API |
-| [graph-renderer.ts](src/graph-renderer.ts) | `GraphRenderer` | D3 SVG force simulation; listens to GraphState events |
-| [hover.ts](src/hover.ts) | `setupHover` | Highlight/dim logic using D3 class toggling on hover |
-| [api.ts](src/api.ts) | — | InspireHEP REST wrappers (`searchAuthors`, `fetchPublications`) |
-| [rate-limiter.ts](src/rate-limiter.ts) | `RateLimiter` | Sliding-window (15 req/5 s) + `X-RateLimit-*` header respecting |
-| [progress.ts](src/progress.ts) | `ProgressIndicator` | Status bar with indeterminate/percent modes |
-| [types.ts](src/types.ts) | — | `AuthorNode`, `CoauthorEdge`, `NetworkProgress`, `GraphEvent` interfaces |
+1. `SearchUI` supplies the selected BAI, name, and author record ID.
+2. `NetworkBuilder.build()` cancels the previous build. A completed-network cache
+   hit restores fresh graph objects in one insertion batch; otherwise it clears
+   the graph and begins fetching. Its caller does not repeat cancellation/clearing.
+3. Root publications arrive in 500-record pages. Each page immediately discovers
+   co-authors and establishes all shared-paper edges among its graph authors.
+4. Profile queries group up to 100 record IDs to recover canonical names and BAIs.
+5. Connection queries group up to 50 co-author BAIs. They add edges only between
+   authors already in the root network. Queries beyond the 10,000-record window
+   and HTTP 400/414 query failures split recursively. Other failures report
+   incomplete coverage without repeated query splitting.
 
-**Data flow:**
-```
-SearchUI
-  → NetworkBuilder.build(bai, name, recid)
-      Phase 1: fetch root's publications (paginated, 250/page)
-      Phase 2: add root node + co-authors, weight edges by shared-paper count
-      Phase 3: for each co-author, fetch their pubs → add cross-edges between existing nodes only
-  → GraphState (batched updates → batch-complete event)
-  → GraphRenderer (updates D3 simulation)
-  → setupHover (highlights neighbor subgraph on mouseover)
-```
+Keep the page size, filter, batching sizes, and rate limits in `src/constants.ts`.
+The API allows 15 requests per five-second window. Autocomplete has interactive
+priority ahead of queued background graph requests. FIFO order, including retries,
+is preserved within each priority. Server cooldowns still apply to both.
 
-## Key non-obvious patterns
+Literature authors use `authors.record.$ref`. A valid author reference takes
+precedence over a positive safe integer legacy `recid`; unresolved identities
+normalize to `null`. Missing contributor roles mean author. Explicit roles must
+include `author`. Editors and supervisors do not create nodes or edges, and a
+root paper with an explicit non-author root role is skipped.
 
-- **Batching:** `GraphState.beginBatch()/endBatch()` suppresses per-node/edge events during bulk fetch phases and fires a single `batch-complete` to prevent excessive D3 redraws.
-- **Cancellation:** Both `NetworkBuilder` and `SearchUI` use `AbortController`; starting a new search cancels in-flight requests before rebuilding.
-- **Paper authorship filter:** Papers with >10 authors (e.g. large physics collaborations like ATLAS/CMS) are skipped in `NetworkBuilder` to avoid a meaningless dense graph.
-- **Edge deduplication:** Edges are keyed by `recid` (not author name) and accumulate `paperIds: Set<string>`; weight = number of shared papers.
-- **TypeScript compile strategy:** `tsconfig.json` has `"noEmit": true` — tsc is type-check only; Vite handles actual transpilation.
-- **Hover via class toggling:** CSS `.highlighted`/`.dimmed` classes are applied by D3 imperatively (not CSS `:hover`) because SVG elements require explicit selection.
+Papers with more than `MAX_COAUTHOR_COUNT` contributors are excluded. The current
+limit is ten and appears beside the graph status. Publication IDs are deduplicated
+across the whole build, and author IDs are deduplicated within each paper. Domain
+edge endpoints stay strings; each unique paper increments each eligible pair's
+weight once. The temporary publication-ID set is released after the build.
+
+`partial` completion reports unresolved author entries across unique publications,
+incomplete pagination, failed profile requests, or missing co-author connections.
+Those entry counts do not claim to count distinct people. Partial results and
+errors remain visible until a new selection or home navigation.
+
+## State, rendering, and caching
+
+- `GraphState.beginBatch()/endBatch()` accumulate topology, weight, and label
+  flags. The outermost batch emits one `changed` event; `clear()` emits `cleared`.
+- The renderer owns positions, velocities, fixed drag coordinates, and resolved
+  D3 link endpoints. Its simulation records reference domain records. Node degree
+  comes from adjacency. Rendering must not mutate domain endpoints or snapshots.
+- Renderer changes coalesce into one animation-frame update. Topology absorbs
+  pending appearance updates. Label-only changes leave forces alone; weight-only
+  changes refresh forces only when capped link strengths change. Clear and
+  destruction cancel pending work, and destruction unregisters listeners.
+- SVG ticks use cached selections. Larger graphs keep the root and eight
+  best-connected co-author labels visible; other labels appear on hover. Retain
+  curved edges, force parameters, and neighbor-subgraph hover semantics.
+- Automatic fitting is armed after root fetching and runs once when the simulation
+  settles. Pan, zoom, or drag suppresses it. Explicit Fit graph remains available;
+  clearing immediately restores identity zoom. Fit reserves space for overlays
+  and includes node radii, including on mobile.
+- API caching holds at most 128 typed author responses for ten minutes. Publication
+  pages are not cached. Each builder caches at most three fully successful network
+  snapshots for ten minutes, keyed by root record ID and publication-filter value.
+  Capture and restore clone nodes and weighted edges. Snapshots retain no
+  publication responses or simulation state. Cache reads do not change eviction
+  order.
+
+For renderer or cache performance work, read [docs/performance.md](docs/performance.md)
+and use its publication benchmark, dense browser probe, and desktop/mobile checks.
