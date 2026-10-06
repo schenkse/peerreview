@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as d3 from 'd3';
 import { GraphRenderer } from './graph-renderer';
 import { GraphState } from './graph-state';
-import type { AuthorNode, CoauthorEdge } from './types';
+import type { SimulationAuthorNode, SimulationCoauthorEdge } from './graph-renderer';
 
 vi.mock('d3', async original => {
   const actual = await original<typeof d3>();
@@ -12,7 +12,7 @@ vi.mock('d3', async original => {
 
 let renderer: GraphRenderer;
 let graph: GraphState;
-let simulation: d3.Simulation<AuthorNode, CoauthorEdge>;
+let simulation: d3.Simulation<SimulationAuthorNode, SimulationCoauthorEdge>;
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
@@ -62,7 +62,7 @@ describe('GraphRenderer appearance updates', () => {
 
   it('updates names without changing the layout', () => {
     const restart = vi.spyOn(simulation, 'restart');
-    const node = graph.getNode('2')!;
+    const node = simulation.nodes().find(n => n.id === '2')!;
     const position = [node.x, node.y];
     graph.beginBatch();
     graph.updateNodeName('2', 'Canonical author name');
@@ -100,18 +100,18 @@ describe('GraphRenderer appearance updates', () => {
 
 it('updates weights without rebuilding nodes, collision forces, or DOM joins', () => {
   const collide = simulation.force('collide');
-  const node = graph.getNode('2')!;
+  const node = simulation.nodes().find(n => n.id === '2')!;
   const position = [node.x, node.y];
   const elements = [...document.querySelectorAll('.node, .edge, .label-group')];
   const nodes = vi.spyOn(simulation, 'nodes');
-  const force = simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>;
+  const force = simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>;
   const links = vi.spyOn(force, 'links');
   const strength = vi.spyOn(force, 'strength');
   graph.addOrUpdateEdge('1', '2');
   expect(nodes).not.toHaveBeenCalled();
   expect(links).not.toHaveBeenCalled();
   expect(strength).toHaveBeenCalledWith(expect.any(Function));
-  expect(force.strength()(graph.getEdges()[0], 0, graph.getEdges())).toBe(0.2);
+  expect(force.strength()(force.links()[0], 0, force.links())).toBe(0.2);
   expect(simulation.force('collide')).toBe(collide);
   expect([node.x, node.y]).toEqual(position);
   expect([...document.querySelectorAll('.node, .edge, .label-group')]).toEqual(elements);
@@ -123,7 +123,7 @@ it('updates capped edge widths without refreshing strengths or reheating', () =>
   graph.endBatch();
   simulation.stop().alpha(0);
   const restart = vi.spyOn(simulation, 'restart');
-  const force = simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>;
+  const force = simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>;
   const strength = vi.spyOn(force, 'strength');
   graph.addOrUpdateEdge('1', '2');
   expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(11) * 1.25));
@@ -200,7 +200,7 @@ it.each([false, true])('positions revealed labels immediately with a stopped sim
   largeGraph();
   const label = document.querySelector('.label-group[data-id="500"]')!;
   expect(label.classList.contains('minor')).toBe(true);
-  const node = graph.getNode('500')!;
+  const node = simulation.nodes().find(n => n.id === '500')!;
   node.x = 123;
   node.y = 456;
   const offset = Number(document.querySelector('.node[data-id="500"]')!.getAttribute('r')) + 9;
@@ -311,4 +311,15 @@ it('suppresses automatic fitting after user zoom and resets that choice on clear
   expect(fit.k).toBeGreaterThan(0);
   graph.clear(); renderer.fitGraph();
   expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
+});
+
+it('keeps domain endpoints and author records free of simulation fields', () => {
+  simulation.tick(5);
+  expect(graph.getEdges()).toEqual([{ source: '1', target: '2', weight: 1 }]);
+  expect(graph.getNode('1')).toEqual({ id: '1', recid: 1, name: 'Root', isRoot: true });
+  const root = simulation.nodes().find(n => n.id === '1')!;
+  const coordinates = [root.x, root.y];
+  graph.addNode({ id: '3', recid: 3, name: 'New', isRoot: false });
+  expect(simulation.nodes().find(n => n.id === '1')).toBe(root);
+  expect([root.x, root.y]).toEqual(coordinates);
 });

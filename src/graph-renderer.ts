@@ -1,5 +1,16 @@
 import * as d3 from 'd3';
 import type { AuthorNode, CoauthorEdge } from './types';
+
+export interface SimulationAuthorNode extends d3.SimulationNodeDatum {
+  id: string;
+  record: AuthorNode;
+}
+
+export interface SimulationCoauthorEdge extends d3.SimulationLinkDatum<SimulationAuthorNode> {
+  source: string | SimulationAuthorNode;
+  target: string | SimulationAuthorNode;
+  record: CoauthorEdge;
+}
 import type { GraphState } from './graph-state';
 import { HoverController } from './hover';
 
@@ -14,24 +25,24 @@ export class GraphRenderer {
   private linkGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private nodeGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
   private labelGroup: d3.Selection<SVGGElement, unknown, null, undefined>;
-  private links: d3.Selection<SVGPathElement, CoauthorEdge, SVGGElement, unknown>;
-  private nodes: d3.Selection<SVGCircleElement, AuthorNode, SVGGElement, unknown>;
-  private labels: d3.Selection<SVGGElement, AuthorNode, SVGGElement, unknown>;
-  private labelText: d3.Selection<SVGTextElement, AuthorNode, SVGGElement, unknown>;
-  private visibleLabels: d3.Selection<SVGGElement, AuthorNode, SVGGElement, unknown>;
+  private links: d3.Selection<SVGPathElement, SimulationCoauthorEdge, SVGGElement, unknown>;
+  private nodes: d3.Selection<SVGCircleElement, SimulationAuthorNode, SVGGElement, unknown>;
+  private labels: d3.Selection<SVGGElement, SimulationAuthorNode, SVGGElement, unknown>;
+  private labelText: d3.Selection<SVGTextElement, SimulationAuthorNode, SVGGElement, unknown>;
+  private visibleLabels: d3.Selection<SVGGElement, SimulationAuthorNode, SVGGElement, unknown>;
   private permanentLabelIds = new Set<string>();
   private labelOffsets = new Map<string, number>();
   private hover: HoverController;
-  private simulation: d3.Simulation<AuthorNode, CoauthorEdge>;
+  private simulation: d3.Simulation<SimulationAuthorNode, SimulationCoauthorEdge>;
   private zoom!: d3.ZoomBehavior<SVGSVGElement, unknown>;
   private width: number;
   private height: number;
   private resizeAbort = new AbortController();
-  private linkStrengths = new Map<CoauthorEdge, number>();
+  private linkStrengths = new Map<SimulationCoauthorEdge, number>();
   private autoFitRequested = false;
   private autoFitArmed = false;
   private interacted = false;
-  private degreeMap = new Map<string, number>();
+  private simulationNodes = new Map<string, SimulationAuthorNode>();
 
   constructor(
     private container: HTMLElement,
@@ -63,9 +74,9 @@ export class GraphRenderer {
     this.linkGroup = this.g.append('g').attr('class', 'links');
     this.nodeGroup = this.g.append('g').attr('class', 'nodes');
     this.labelGroup = this.g.append('g').attr('class', 'labels');
-    this.links = this.linkGroup.selectAll<SVGPathElement, CoauthorEdge>('path');
-    this.nodes = this.nodeGroup.selectAll<SVGCircleElement, AuthorNode>('circle');
-    this.labels = this.labelGroup.selectAll<SVGGElement, AuthorNode>('g.label-group');
+    this.links = this.linkGroup.selectAll<SVGPathElement, SimulationCoauthorEdge>('path');
+    this.nodes = this.nodeGroup.selectAll<SVGCircleElement, SimulationAuthorNode>('circle');
+    this.labels = this.labelGroup.selectAll<SVGGElement, SimulationAuthorNode>('g.label-group');
     this.labelText = this.labels.select<SVGTextElement>('text.label');
     this.visibleLabels = this.labels;
 
@@ -85,11 +96,11 @@ export class GraphRenderer {
 
     // Force simulation
     this.simulation = d3
-      .forceSimulation<AuthorNode>([])
+      .forceSimulation<SimulationAuthorNode>([])
       .force(
         'link',
         d3
-          .forceLink<AuthorNode, CoauthorEdge>([])
+          .forceLink<SimulationAuthorNode, SimulationCoauthorEdge>([])
           .id((d) => d.id)
           .distance(150)
           .strength(link => this.linkStrengths.get(link) ?? 0),
@@ -99,7 +110,7 @@ export class GraphRenderer {
         'center',
         d3.forceCenter(this.width / 2, this.height / 2).strength(0.05),
       )
-      .force('collide', d3.forceCollide<AuthorNode>().radius((d) => this.nodeRadius(d) + 4))
+      .force('collide', d3.forceCollide<SimulationAuthorNode>().radius((d) => this.nodeRadius(d) + 4))
       .on('tick', () => this.ticked())
       .on('end', () => {
         if (this.autoFitArmed) {
@@ -201,8 +212,9 @@ export class GraphRenderer {
     this.labelOffsets.clear();
     this.permanentLabelIds.clear();
     this.linkStrengths.clear();
+    this.simulationNodes.clear();
     this.simulation.nodes([]);
-    (this.simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>).links([]);
+    (this.simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>).links([]);
     this.simulation.alpha(0).stop();
   }
 
@@ -212,64 +224,66 @@ export class GraphRenderer {
     const highColor = style.getPropertyValue('--node-degree-high').trim() || '#454a55';
     const rootId = this.graphState.getNodes().find(n => n.isRoot)?.id;
     let maxDegree = 1;
-    for (const [id, degree] of this.degreeMap) {
-      if (id !== rootId) maxDegree = Math.max(maxDegree, degree);
+    for (const node of this.simulationNodes.values()) {
+      if (node.id !== rootId) maxDegree = Math.max(maxDegree, this.degree(node.id));
     }
     const colorScale = d3.scaleSequential(d3.interpolate(lowColor, highColor)).domain([0, maxDegree]);
-    this.nodes.style('fill', d => d.isRoot ? 'var(--node-root)' : colorScale(this.degreeMap.get(d.id) ?? 0));
+    this.nodes.style('fill', d => d.record.isRoot ? 'var(--node-root)' : colorScale(this.degree(d.id)));
   }
 
   private refreshLabels(): void {
-    this.labelText.text(d => d.name);
+    this.labelText.text(d => d.record.name);
   }
 
   // Ids of nodes whose labels stay visible without hovering.
-  private labelledIds(nodes: AuthorNode[]): Set<string> {
-    const coauthors = nodes.filter((n) => !n.isRoot);
+  private labelledIds(nodes: SimulationAuthorNode[]): Set<string> {
+    const coauthors = nodes.filter((n) => !n.record.isRoot);
     const shown = coauthors.length <= ALL_LABELS_MAX
       ? coauthors
       : [...coauthors]
-        .sort((a, b) => (this.degreeMap.get(b.id) ?? 0) - (this.degreeMap.get(a.id) ?? 0))
+        .sort((a, b) => this.degree(b.id) - this.degree(a.id))
         .slice(0, LABELLED_AUTHORS);
     const ids = new Set(shown.map((n) => n.id));
-    for (const n of nodes) if (n.isRoot) ids.add(n.id);
+    for (const n of nodes) if (n.record.isRoot) ids.add(n.id);
     return ids;
   }
 
-  private nodeRadius(d: AuthorNode): number {
-    const deg = this.degreeMap.get(d.id) ?? 0;
-    const base = d.isRoot ? 9 : 6;
-    return Math.min(base + Math.log1p(deg) * 2.5, d.isRoot ? 22 : 18);
+  private degree(id: string): number {
+    return this.graphState.getNeighborIds(id).size;
+  }
+
+  private nodeRadius(d: SimulationAuthorNode): number {
+    const deg = this.degree(d.id);
+    const base = d.record.isRoot ? 9 : 6;
+    return Math.min(base + Math.log1p(deg) * 2.5, d.record.isRoot ? 22 : 18);
   }
 
   private updateSimulation(): void {
-    const nodes = this.graphState.getNodes();
-    const edges = this.graphState.getEdges();
+    const nodes = this.graphState.getNodes().map(record => {
+      const node = this.simulationNodes.get(record.id) ?? { id: record.id, record };
+      node.record = record;
+      return node;
+    });
+    this.simulationNodes = new Map(nodes.map(node => [node.id, node]));
+    const edges: SimulationCoauthorEdge[] = this.graphState.getEdges().map(record => ({
+      source: record.source, target: record.target, record,
+    }));
 
-    // Recompute degree map
-    this.degreeMap = new Map<string, number>();
-    for (const e of edges) {
-      const s = typeof e.source === 'string' ? e.source : (e.source as AuthorNode).id;
-      const t = typeof e.target === 'string' ? e.target : (e.target as AuthorNode).id;
-      this.degreeMap.set(s, (this.degreeMap.get(s) ?? 0) + 1);
-      this.degreeMap.set(t, (this.degreeMap.get(t) ?? 0) + 1);
-    }
-
-    this.linkStrengths = new Map(edges.map(edge => [edge, Math.min(edge.weight * 0.1, 1)]));
+    this.linkStrengths = new Map(edges.map(edge => [edge, Math.min(edge.record.weight * 0.1, 1)]));
 
     // Update simulation data
     this.simulation.nodes(nodes);
-    (this.simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>).links(edges);
+    (this.simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>).links(edges);
 
     // Update collision force with current radii
     this.simulation.force(
       'collide',
-      d3.forceCollide<AuthorNode>().radius((d) => this.nodeRadius(d) + 4),
+      d3.forceCollide<SimulationAuthorNode>().radius((d) => this.nodeRadius(d) + 4),
     );
 
     // --- Links ---
     const linkSel = this.linkGroup
-      .selectAll<SVGPathElement, CoauthorEdge>('path')
+      .selectAll<SVGPathElement, SimulationCoauthorEdge>('path')
       .data(edges, (d) => {
         const s = typeof d.source === 'string' ? d.source : d.source.id;
         const t = typeof d.target === 'string' ? d.target : d.target.id;
@@ -284,11 +298,11 @@ export class GraphRenderer {
       .attr('class', 'edge');
 
     this.links = linkSel.merge(linkEnter);
-    this.links.attr('stroke-width', d => Math.sqrt(d.weight) * 1.25);
+    this.links.attr('stroke-width', d => Math.sqrt(d.record.weight) * 1.25);
 
     // --- Nodes ---
     const nodeSel = this.nodeGroup
-      .selectAll<SVGCircleElement, AuthorNode>('circle')
+      .selectAll<SVGCircleElement, SimulationAuthorNode>('circle')
       .data(nodes, (d) => d.id);
 
     nodeSel.exit().remove();
@@ -296,7 +310,7 @@ export class GraphRenderer {
     const nodeEnter = nodeSel
       .enter()
       .append('circle')
-      .attr('class', (d) => `node${d.isRoot ? ' root' : ''}`)
+      .attr('class', (d) => `node${d.record.isRoot ? ' root' : ''}`)
       .attr('data-id', (d) => d.id)
       .call(this.dragBehavior());
 
@@ -311,7 +325,7 @@ export class GraphRenderer {
 
     // --- Labels ---
     const labelSel = this.labelGroup
-      .selectAll<SVGGElement, AuthorNode>('g.label-group')
+      .selectAll<SVGGElement, SimulationAuthorNode>('g.label-group')
       .data(nodes, (d) => d.id);
 
     labelSel.exit().remove();
@@ -319,7 +333,7 @@ export class GraphRenderer {
     const labelEnter = labelSel
       .enter()
       .append('g')
-      .attr('class', (d) => `label-group${d.isRoot ? ' root' : ''}`)
+      .attr('class', (d) => `label-group${d.record.isRoot ? ' root' : ''}`)
       .attr('data-id', (d) => d.id);
 
     labelEnter.append('text')
@@ -341,17 +355,17 @@ export class GraphRenderer {
   }
 
   private updateWeights(): void {
-    this.links.attr('stroke-width', edge => Math.sqrt(edge.weight) * 1.25);
+    this.links.attr('stroke-width', edge => Math.sqrt(edge.record.weight) * 1.25);
     let strengthChanged = false;
     for (const [edge, previous] of this.linkStrengths) {
-      const strength = Math.min(edge.weight * 0.1, 1);
+      const strength = Math.min(edge.record.weight * 0.1, 1);
       if (strength !== previous) {
         this.linkStrengths.set(edge, strength);
         strengthChanged = true;
       }
     }
     if (!strengthChanged) return;
-    const linkForce = this.simulation.force('link') as d3.ForceLink<AuthorNode, CoauthorEdge>;
+    const linkForce = this.simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>;
     // D3 caches strengths, so changing weights requires refreshing the accessor.
     linkForce.strength(linkForce.strength());
     this.simulation.alpha(0.3).restart();
@@ -359,10 +373,10 @@ export class GraphRenderer {
 
   private ticked(): void {
     this.links.attr('d', (d) => {
-        const sx = (d.source as AuthorNode).x ?? 0;
-        const sy = (d.source as AuthorNode).y ?? 0;
-        const tx = (d.target as AuthorNode).x ?? 0;
-        const ty = (d.target as AuthorNode).y ?? 0;
+        const sx = (d.source as SimulationAuthorNode).x ?? 0;
+        const sy = (d.source as SimulationAuthorNode).y ?? 0;
+        const tx = (d.target as SimulationAuthorNode).x ?? 0;
+        const ty = (d.target as SimulationAuthorNode).y ?? 0;
         const dx = tx - sx;
         const dy = ty - sy;
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -388,9 +402,9 @@ export class GraphRenderer {
       `translate(${d.x ?? 0}, ${(d.y ?? 0) + (this.labelOffsets.get(d.id) ?? 0)})`);
   }
 
-  private dragBehavior(): d3.DragBehavior<SVGCircleElement, AuthorNode, AuthorNode | d3.SubjectPosition> {
+  private dragBehavior(): d3.DragBehavior<SVGCircleElement, SimulationAuthorNode, SimulationAuthorNode | d3.SubjectPosition> {
     return d3
-      .drag<SVGCircleElement, AuthorNode>()
+      .drag<SVGCircleElement, SimulationAuthorNode>()
       .on('start', (event, d) => {
         this.markInteraction();
         if (!event.active) this.simulation.alphaTarget(0.3).restart();
@@ -412,7 +426,7 @@ export class GraphRenderer {
     this.width = this.container.clientWidth;
     this.height = this.container.clientHeight;
     this.svg.attr('width', this.width).attr('height', this.height);
-    (this.simulation.force('center') as d3.ForceCenter<AuthorNode>)
+    (this.simulation.force('center') as d3.ForceCenter<SimulationAuthorNode>)
       .x(this.width / 2)
       .y(this.height / 2);
     this.simulation.alpha(0.1).restart();

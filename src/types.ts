@@ -1,5 +1,3 @@
-import type { SimulationNodeDatum, SimulationLinkDatum } from 'd3';
-
 // --- InspireHEP API response shapes (only fields we use) ---
 
 export interface InspireAuthorId {
@@ -47,7 +45,7 @@ export interface InspireSearchResponse<T> {
 
 // --- Application domain types ---
 
-export interface AuthorNode extends SimulationNodeDatum {
+export interface AuthorNode {
   id: string;
   recid: number;
   name: string;
@@ -55,9 +53,9 @@ export interface AuthorNode extends SimulationNodeDatum {
   isRoot: boolean;
 }
 
-export interface CoauthorEdge extends SimulationLinkDatum<AuthorNode> {
-  source: string | AuthorNode;
-  target: string | AuthorNode;
+export interface CoauthorEdge {
+  source: string;
+  target: string;
   weight: number;
 }
 
