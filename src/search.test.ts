@@ -42,13 +42,13 @@ describe('SearchUI', () => {
     input.focus();
     await search();
     expect(input.getAttribute('aria-expanded')).toBe('true');
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
     expect(input.getAttribute('aria-activedescendant')).toBe('author-option-1');
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
     expect(input.getAttribute('aria-activedescendant')).toBe('author-option-2');
     expect(container.querySelector('[aria-selected="true"]')?.id).toBe('author-option-2');
     expect(document.activeElement).toBe(input);
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
     expect(onSelected).toHaveBeenCalledWith('Author.2', 'Author 2', 2);
     expect(input.getAttribute('aria-expanded')).toBe('false');
     expect(input.hasAttribute('aria-activedescendant')).toBe(false);
@@ -56,9 +56,9 @@ describe('SearchUI', () => {
 
   it('ArrowUp initially selects the last suggestion and navigation wraps', async () => {
     await search();
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowUp' }));
     expect(input.getAttribute('aria-activedescendant')).toBe('author-option-2');
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
     expect(input.getAttribute('aria-activedescendant')).toBe('author-option-1');
   });
 
@@ -66,13 +66,13 @@ describe('SearchUI', () => {
     let resolve!: (result: {hits: {hits: InspireAuthorHit[]; total: number}}) => void;
     vi.mocked(searchAuthors).mockReturnValue(new Promise(r => { resolve = r; }));
     await search();
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }));
     resolve({ hits: { hits: [author(1)], total: 1 } });
     await vi.advanceTimersByTimeAsync(0);
     expect(input.getAttribute('aria-expanded')).toBe('false');
     vi.mocked(searchAuthors).mockResolvedValue({ hits: { hits: [author(1)], total: 1 } });
     await search('Next author');
-    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+    const tab = new KeyboardEvent('keydown', { bubbles: true, key: 'Tab', cancelable: true });
     input.dispatchEvent(tab);
     expect(tab.defaultPrevented).toBe(false);
     expect(input.getAttribute('aria-expanded')).toBe('false');
@@ -81,8 +81,8 @@ describe('SearchUI', () => {
   it('does not select the empty-results message with the keyboard', async () => {
     vi.mocked(searchAuthors).mockResolvedValue({ hits: { hits: [], total: 0 } });
     await search();
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
     expect(onSelected).not.toHaveBeenCalled();
     expect(input.hasAttribute('aria-activedescendant')).toBe(false);
   });
@@ -99,4 +99,37 @@ describe('SearchUI', () => {
     expect(onSelected).toHaveBeenCalledWith('Author.1', name, 1);
     expect(input.value).toBe(name);
   });
+});
+
+it('shows loading, offers a keyboard-accessible retry, and retries immediately', async () => {
+  let reject!: (reason: Error) => void;
+  vi.mocked(searchAuthors).mockReturnValueOnce(new Promise((_resolve, r) => { reject = r; }));
+  await search();
+  expect(container.textContent).toContain('Searching...');
+  reject(new Error('Offline'));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(container.textContent).toContain('Search failed. Please try again.');
+  const button = container.querySelector<HTMLButtonElement>('button')!;
+  const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  input.dispatchEvent(tab);
+  expect(tab.defaultPrevented).toBe(false);
+  button.focus(); expect(document.activeElement).toBe(button);
+  button.click();
+  expect(searchAuthors).toHaveBeenCalledTimes(2);
+  expect(document.activeElement).toBe(input);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(container.querySelectorAll('[role="option"]')).toHaveLength(2);
+});
+
+it.each(['changed query', 'Escape', 'outside click'])('discards late failures after %s', async action => {
+  let reject!: (reason: Error) => void;
+  vi.mocked(searchAuthors).mockReturnValueOnce(new Promise((_r, j) => { reject = j; }));
+  await search();
+  if (action === 'changed query') { input.value = 'Next'; input.dispatchEvent(new Event('input')); }
+  else if (action === 'Escape') input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  else document.body.click();
+  reject(new Error('Late failure'));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(container.textContent).not.toContain('failed');
+  expect(container.querySelector('button')).toBeNull();
 });

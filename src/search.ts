@@ -35,7 +35,7 @@ export class SearchUI {
     container.appendChild(this.dropdown);
 
     this.input.addEventListener('input', () => this.onInput());
-    this.input.addEventListener('keydown', event => this.onKeyDown(event));
+    container.addEventListener('keydown', event => this.onKeyDown(event));
     this.input.addEventListener('focus', () => {
       if (this.dropdown.children.length > 0) {
         this.showDropdown();
@@ -70,12 +70,14 @@ export class SearchUI {
   }
 
   private onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Tab' && this.dropdown.querySelector('button')) return;
     if (event.key === 'Escape' || event.key === 'Tab') {
       if (event.key === 'Escape' && this.dropdown.classList.contains('visible')) event.preventDefault();
       this.cancelSearch();
       this.hideDropdown();
       return;
     }
+    if (event.target !== this.input) return;
     const options = this.dropdown.querySelectorAll<HTMLDivElement>('[role="option"]');
     if (options.length === 0) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -98,6 +100,7 @@ export class SearchUI {
   private async search(query: string): Promise<void> {
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
+    this.renderMessage('Searching...');
 
     try {
       const result = await searchAuthors(query, signal);
@@ -105,9 +108,33 @@ export class SearchUI {
       this.renderDropdown(result.hits.hits);
     } catch (err) {
       if (signal.aborted || (err as Error).name === 'AbortError') return;
-      console.error('Search failed:', err);
-      this.hideDropdown();
+      this.renderMessage('Search failed. Please try again.', true);
     }
+  }
+
+  private renderMessage(message: string, retry = false): void {
+    this.hideDropdown();
+    const status = document.createElement('div');
+    status.className = 'search-dropdown-item search-dropdown-empty';
+    status.setAttribute('role', 'status');
+    status.textContent = message;
+    this.dropdown.append(status);
+    if (retry) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'search-retry';
+      button.textContent = 'Retry';
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        const query = this.input.value.trim();
+        this.cancelSearch();
+        this.hideDropdown();
+        this.input.focus({ preventScroll: true });
+        if (query.length >= 2) void this.search(query);
+      });
+      this.dropdown.append(button);
+    }
+    this.showDropdown();
   }
 
   private renderDropdown(authors: InspireAuthorHit[]): void {

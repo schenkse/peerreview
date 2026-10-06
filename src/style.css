@@ -649,3 +649,13 @@ button {
 
   #zoom-controls button { width: 48px; height: 48px; }
 }
+
+.search-retry {
+  margin: 0 16px 12px;
+  padding: 6px 12px;
+  color: var(--text);
+  background: var(--bg-page);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
