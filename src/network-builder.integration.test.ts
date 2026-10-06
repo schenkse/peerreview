@@ -346,3 +346,17 @@ it('counts unresolved entries once per unique publication', async () => {
   await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
   expect(progress.mock.calls.at(-1)?.[0].message).toContain('1 author entry could not be resolved across unique publications');
 });
+
+it('excludes non-authors from discovery and connections and skips edited root papers', async () => {
+  vi.mocked(fetchPublications).mockResolvedValue(response([
+    paper('edited', [{ ...author(1), isAuthor: false }, author(4)]),
+    paper('root', [author(1), author(2), { ...author(3), isAuthor: false }, author(2)]),
+  ]));
+  vi.mocked(fetchConnectionPublications).mockResolvedValue(response([
+    paper('supervised', [{ ...author(1), isAuthor: false }, author(2)]),
+  ]));
+  const graph = new GraphState();
+  await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
+  expect(graph.getNodes().map(n => n.id)).toEqual(['1', '2']);
+  expect(graph.getEdges()).toEqual([{ source: '1', target: '2', weight: 1 }]);
+});

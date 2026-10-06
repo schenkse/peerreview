@@ -45,7 +45,7 @@ export async function fetchPublications(
     q: `a ${bai} and ac 1->${MAX_COAUTHOR_COUNT}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'authors.record,authors.recid,authors.full_name,authors.ids',
+    fields: 'authors.record,authors.recid,authors.inspire_roles,authors.full_name,authors.ids',
   });
   return normalizePublications(await request<RawPublication>(`${INSPIRE_BASE_URL}/literature?${params}`, signal));
 }
@@ -68,7 +68,7 @@ export async function fetchConnectionPublicationsBatch(
     q: `(${disjunction}) and ac 1->${MAX_COAUTHOR_COUNT}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'authors.record,authors.recid',
+    fields: 'authors.record,authors.recid,authors.inspire_roles',
   });
   return normalizePublications(await request<RawPublication>(`${INSPIRE_BASE_URL}/literature?${params}`, signal));
 }
@@ -90,6 +90,7 @@ interface RawPublication {
   metadata: { authors?: {
     record?: { $ref?: string };
     recid?: number;
+    inspire_roles?: string[];
     full_name?: string;
     ids?: InspirePubHit['metadata']['authors'][number]['ids'];
   }[] };
@@ -106,7 +107,8 @@ function normalizePublications(response: InspireSearchResponse<RawPublication>):
       const referenceId = match ? Number(match[1]) : NaN;
       const recid = Number.isSafeInteger(referenceId) ? referenceId
         : Number.isSafeInteger(author.recid) && author.recid! > 0 ? author.recid! : null;
-      return { recid, full_name: author.full_name ?? '', ids: author.ids };
+      return { recid, full_name: author.full_name ?? '', ids: author.ids,
+        isAuthor: author.inspire_roles === undefined || author.inspire_roles.includes('author') };
     }) },
   })) } };
 }

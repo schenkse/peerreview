@@ -52,14 +52,14 @@ it('requests only the fields each operation consumes', async () => {
   await fetchAuthorProfiles([42]);
   const urls = enqueue.mock.calls.map(([url]) => new URL(url));
   expect(urls.map(url => url.searchParams.get('fields'))).toEqual([
-    'name,ids,positions,control_number,stub', 'authors.record,authors.recid,authors.full_name,authors.ids',
-    'authors.record,authors.recid', 'authors.record,authors.recid', 'control_number,name,ids',
+    'name,ids,positions,control_number,stub', 'authors.record,authors.recid,authors.inspire_roles,authors.full_name,authors.ids',
+    'authors.record,authors.recid,authors.inspire_roles', 'authors.record,authors.recid,authors.inspire_roles', 'control_number,name,ids',
   ]);
   expect(urls.slice(1).map(url => url.searchParams.get('size'))).toEqual(['500', '500', '500', '500']);
   expect(urls[3].searchParams.get('q')).toBe('(a Batch.one or a Batch.two) and ac 1->10');
 });
 
- it('normalizes record references before legacy IDs and reports missing identities', async () => {
+it('normalizes record references before legacy IDs and reports missing identities', async () => {
   vi.spyOn(rateLimiter, 'enqueue').mockResolvedValue(new Response(JSON.stringify({ hits: { total: 1, hits: [{ id: 'identity', metadata: { authors: [
     { record: { $ref: 'https://inspirehep.net/api/authors/42' } },
     { recid: 7 },
@@ -70,4 +70,16 @@ it('requests only the fields each operation consumes', async () => {
   ] } }] } })));
   const response = await fetchPublications('identity-test');
   expect(response.hits.hits[0].metadata.authors.map(a => a.recid)).toEqual([42, 7, 9, null, null, null, null, 11]);
+});
+
+it('normalizes contributor roles for root and connection publications', async () => {
+  const enqueue = vi.spyOn(rateLimiter, 'enqueue').mockImplementation(async () => new Response(JSON.stringify({ hits: { total: 1, hits: [{ id: 'roles', metadata: { authors: [
+    {}, { inspire_roles: ['author'] }, { inspire_roles: ['editor', 'author'] },
+    { inspire_roles: ['editor'] }, { inspire_roles: ['supervisor'] }, { inspire_roles: [] },
+  ] } }] } })));
+  for (const fetchPubs of [fetchPublications, fetchConnectionPublications]) {
+    const response = await fetchPubs('role-test');
+    expect(response.hits.hits[0].metadata.authors.map(a => a.isAuthor)).toEqual([true, true, true, false, false, false]);
+  }
+  expect(enqueue).toHaveBeenCalledTimes(2);
 });

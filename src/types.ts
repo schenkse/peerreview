@@ -21,6 +21,7 @@ export interface InspireAuthorHit {
 export interface InspirePubAuthor {
   full_name: string;
   recid: number | null;
+  isAuthor?: boolean;
   ids?: InspireAuthorId[];
 }
 
@@ -33,7 +34,7 @@ export interface InspirePubHit {
 
 export interface InspireConnectionPubHit {
   id: string;
-  metadata: { authors: { recid: number | null }[] };
+  metadata: { authors: { recid: number | null; isAuthor?: boolean }[] };
 }
 
 export interface InspireSearchResponse<T> {

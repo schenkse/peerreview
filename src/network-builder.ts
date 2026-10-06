@@ -4,6 +4,7 @@ import {
   COAUTHOR_BATCH_CHUNK_SIZE,
   DEFAULT_PAGE_SIZE,
   MAX_RESULT_WINDOW,
+  MAX_COAUTHOR_COUNT,
 } from './constants';
 import type { GraphState } from './graph-state';
 import type { InspirePubHit, InspireConnectionPubHit, InspireSearchResponse, NetworkProgress } from './types';
@@ -160,8 +161,12 @@ export class NetworkBuilder {
     try {
       for (const pub of pubs) {
         if (seenPapers.has(pub.id)) continue;
+        if (pub.metadata.authors.length > MAX_COAUTHOR_COUNT || pub.metadata.authors.some(author => author.recid === recid && author.isAuthor === false)) {
+          seenPapers.add(pub.id);
+          continue;
+        }
         for (const author of pub.metadata.authors) {
-          if (!author.recid || author.recid === recid) continue;
+          if (author.isAuthor === false || !author.recid || author.recid === recid) continue;
           const authorId = String(author.recid);
           const bai = author.ids?.find(id => id.schema === 'INSPIRE BAI')?.value;
           if (bai) coauthorBais.set(authorId, bai);
@@ -234,9 +239,10 @@ export class NetworkBuilder {
       for (const pub of pubs) {
         if (seenPapers.has(pub.id)) continue;
         seenPapers.add(pub.id);
-        coverage.unresolvedEntries += pub.metadata.authors.filter(author => !author.recid).length;
+        if (pub.metadata.authors.length > MAX_COAUTHOR_COUNT) continue;
+        coverage.unresolvedEntries += pub.metadata.authors.filter(author => author.isAuthor !== false && !author.recid).length;
         const authorIds = new Set(pub.metadata.authors
-          .filter(author => author.recid && this.graphState.hasNode(String(author.recid)))
+          .filter(author => author.isAuthor !== false && author.recid && this.graphState.hasNode(String(author.recid)))
           .map(author => String(author.recid)));
         // Root queries establish authorship even when the API omits the root record.
         if (rootId) authorIds.add(rootId);
