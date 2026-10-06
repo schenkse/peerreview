@@ -87,10 +87,9 @@ errors remain visible until a new selection or home navigation.
 - SVG ticks use cached selections. Larger graphs keep the root and eight
   best-connected co-author labels visible; other labels appear on hover. Retain
   curved edges, force parameters, and neighbor-subgraph hover semantics.
-- Automatic fitting is armed after root fetching and runs once when the simulation
-  settles. Pan, zoom, or drag suppresses it. Explicit Fit graph remains available;
-  clearing immediately restores identity zoom. Fit reserves space for overlays
-  and includes node radii, including on mobile.
+- The viewport stays steady as publications arrive and the simulation settles.
+  Fit graph animates an explicit fit, reserving space for overlays and including
+  node radii on mobile. Clearing immediately restores identity zoom.
 - API caching holds at most 128 typed author responses for ten minutes. Publication
   pages are not cached. Each builder caches at most three fully successful network
   snapshots for ten minutes, keyed by root record ID and publication-filter value.

@@ -136,11 +136,15 @@ try {
     if (mobile) await evaluate(`document.querySelector('.node[data-id="2"]').dispatchEvent(new MouseEvent('click', {bubbles:true}))`);
     else await evaluate(`document.querySelector('.node[data-id="2"]').dispatchEvent(new MouseEvent('mouseenter'))`);
     assert(await evaluate(`document.querySelector('.node[data-id="2"]').classList.contains('pulse')`));
+    const loadingView = await evaluate(`JSON.stringify(document.querySelector('#graph-container svg').__zoom)`);
     for (const event of heldConnections) await fulfill(event, response([{ id: 'cross', metadata: { authors: [author(2), author(30), { full_name: 'Unresolved author' }] } }]));
     await waitFor(`document.querySelectorAll('.edge').length === 30`);
     assert(await evaluate(`document.querySelector('.node[data-id="30"]').classList.contains('highlighted')`));
     await delay(6100);
     assert(await evaluate(`document.querySelector('#progress').classList.contains('visible') && document.querySelector('#progress').textContent.includes('Partial network')`), 'persistent partial warning');
+    assert.equal(await evaluate(`JSON.stringify(document.querySelector('#graph-container svg').__zoom)`), loadingView, 'viewport remains stable after loading and settling');
+    await click('#zoom-reset');
+    await delay(500);
     const fitted = await evaluate(`(() => {
       const status = document.getElementById('status').getBoundingClientRect();
       const controls = document.getElementById('zoom-controls').getBoundingClientRect();
@@ -148,7 +152,7 @@ try {
         const r=node.getBoundingClientRect(); return r.left >= 23 && r.right <= innerWidth-23 && r.top >= status.bottom+23 && r.bottom <= controls.top-23;
       });
     })()`);
-    assert(fitted, 'automatic fit within available viewport');
+    assert(fitted, 'explicit fit within available viewport');
     assert.equal(await evaluate(`document.querySelector('#publication-filter').textContent`), 'Papers with at most 10 authors');
     assert.equal(await evaluate(`document.querySelector('#zoom-reset').getAttribute('aria-label')`), 'Fit graph');
     const bounds = await evaluate(`(() => {const ids=['home','bar-search','theme-toggle','about-btn']; return ids.map(id=>{const e=document.getElementById(id);const r=e.getBoundingClientRect();return {id,x:r.x,width:r.width,right:r.right,display:getComputedStyle(e).display}})})()`);
@@ -174,7 +178,7 @@ try {
     assert(await evaluate(`document.activeElement.matches('.search-input')`), 'focus after home');
     assert.equal(await evaluate(`document.querySelector('#progress').classList.contains('visible')`), false);
     assert(await evaluate(`(() => {const t=document.querySelector('#graph-container svg').__zoom;return t.k===1&&t.x===0&&t.y===0})()`));
-    console.log(JSON.stringify({ name, width, coarse, controls: bounds, searchRetryAndFocus: 'passed', liveHighlight: 'passed', partialWarning: 'passed', automaticFit: 'passed', homeAndZoomReset: 'passed' }));
+    console.log(JSON.stringify({ name, width, coarse, controls: bounds, searchRetryAndFocus: 'passed', liveHighlight: 'passed', partialWarning: 'passed', stableViewportAndExplicitFit: 'passed', homeAndZoomReset: 'passed' }));
   }
   assert.equal(errors.length, 0, JSON.stringify(errors));
   console.log(`Screenshots: ${artifacts}`);

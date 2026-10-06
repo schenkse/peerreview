@@ -39,9 +39,6 @@ export class GraphRenderer {
   private height: number;
   private resizeAbort = new AbortController();
   private linkStrengths = new Map<SimulationCoauthorEdge, number>();
-  private autoFitRequested = false;
-  private autoFitArmed = false;
-  private interacted = false;
   private pendingChange: GraphChange | null = null;
   private updateFrame: number | null = null;
   private destroyed = false;
@@ -92,7 +89,6 @@ export class GraphRenderer {
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 5])
       .extent((): [[number, number], [number, number]] => [[0, 0], [this.width, this.height]])
-      .on('start', event => { if (event.sourceEvent) this.markInteraction(); })
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
       });
@@ -118,8 +114,7 @@ export class GraphRenderer {
         d3.forceCenter(this.width / 2, this.height / 2).strength(0.05),
       )
       .force('collide', d3.forceCollide<SimulationAuthorNode>().radius((d) => this.nodeRadius(d) + 4))
-      .on('tick', () => this.ticked())
-      .on('end', () => this.fitIfSettled());
+      .on('tick', () => this.ticked());
 
     // Label edits do not change forces or node positions.
     graphState.on('changed', this.onChanged);
@@ -140,40 +135,14 @@ export class GraphRenderer {
   }
 
   zoomIn(): void {
-    this.markInteraction();
     this.svg.transition().duration(250).call(this.zoom.scaleBy, 1.4);
   }
 
   zoomOut(): void {
-    this.markInteraction();
     this.svg.transition().duration(250).call(this.zoom.scaleBy, 1 / 1.4);
   }
 
-  armAutoFit(): void {
-    if (this.autoFitRequested) return;
-    this.autoFitRequested = true;
-    this.autoFitArmed = !this.interacted;
-    this.fitIfSettled();
-  }
-
-  private fitIfSettled(): void {
-    if (this.autoFitArmed && this.updateFrame === null && this.simulation.alpha() < this.simulation.alphaMin()) {
-      this.autoFitArmed = false;
-      this.applyFit(0);
-    }
-  }
-
   fitGraph(): void {
-    this.markInteraction();
-    this.applyFit(400);
-  }
-
-  private markInteraction(): void {
-    this.interacted = true;
-    this.autoFitArmed = false;
-  }
-
-  private applyFit(duration: number): void {
     const nodes = this.simulation.nodes().filter(node => Number.isFinite(node.x) && Number.isFinite(node.y));
     if (!nodes.length) {
       this.svg.interrupt().call(this.zoom.transform, d3.zoomIdentity);
@@ -200,15 +169,11 @@ export class GraphRenderer {
     const transform = d3.zoomIdentity.translate(this.width / 2 - scale * (minX + maxX) / 2,
       (top + bottom) / 2 - scale * (minY + maxY) / 2).scale(scale);
     this.svg.interrupt();
-    if (duration) this.svg.transition().duration(duration).call(this.zoom.transform, transform);
-    else this.svg.call(this.zoom.transform, transform);
+    this.svg.transition().duration(400).call(this.zoom.transform, transform);
   }
 
   reset(): void {
     this.cancelUpdate();
-    this.autoFitRequested = false;
-    this.autoFitArmed = false;
-    this.interacted = false;
     this.svg.interrupt().call(this.zoom.transform, d3.zoomIdentity);
     this.hover.clear();
     this.links.remove();
@@ -251,7 +216,6 @@ export class GraphRenderer {
         if (changes.weightsChanged) this.updateWeights();
         if (changes.labelsChanged) this.refreshLabels();
       }
-      this.fitIfSettled();
     });
   }
 
@@ -443,7 +407,6 @@ export class GraphRenderer {
     return d3
       .drag<SVGCircleElement, SimulationAuthorNode>()
       .on('start', (event, d) => {
-        this.markInteraction();
         if (!event.active) this.simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;

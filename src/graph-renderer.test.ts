@@ -257,29 +257,7 @@ it('animates explicit fitting', () => {
   d3.select(svg).interrupt();
 });
 
-it.each(['pan', 'drag'])('suppresses automatic fitting after a user %s', action => {
-  simulation.stop().alpha(0.2);
-  renderer.armAutoFit();
-  const svg = document.querySelector('svg')!;
-  const view = document.defaultView!;
-  const target = action === 'pan' ? svg : document.querySelector('.node[data-id="1"]')!;
-  const dispatch = (element: EventTarget, type: string, x: number, y: number, buttons = 0) => {
-    const event = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, buttons });
-    // jsdom's Window proxy fails UIEvent's constructor brand check.
-    Object.defineProperty(event, 'view', { value: view });
-    element.dispatchEvent(event);
-  };
-  dispatch(target, 'mousedown', 100, 100, 1);
-  dispatch(window, 'mousemove', 140, 130, 1);
-  dispatch(window, 'mouseup', 140, 130);
-  const manual = d3.zoomTransform(svg);
-  simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
-  expect(d3.zoomTransform(svg)).toEqual(manual);
-  if (action === 'pan') expect(manual.x).not.toBe(0);
-  else expect(simulation.nodes()[0].fx).toBeNull();
-});
-
-it('fits node radii inside a mobile viewport and reserves overlays', () => {
+it('fits node radii inside a mobile viewport and reserves overlays', async () => {
   graph.clear();
   const container = document.getElementById('graph')!;
   container.getBoundingClientRect = () => ({ width: 320, height: 700, top: 0 }) as DOMRect;
@@ -294,34 +272,28 @@ it('fits node radii inside a mobile viewport and reserves overlays', () => {
   const nodes = simulation.nodes();
   nodes[0].x = -300; nodes[0].y = -500;
   nodes[1].x = 900; nodes[1].y = 1300;
-  renderer.armAutoFit();
-  simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
+  simulation.stop();
+  renderer.fitGraph();
+  await new Promise(resolve => setTimeout(resolve, 450));
   const transform = d3.zoomTransform(document.querySelector('svg')!);
   for (const node of nodes) {
     const [x, y] = transform.apply([node.x!, node.y!]);
     expect(x).toBeGreaterThan(24); expect(x).toBeLessThan(296);
     expect(y).toBeGreaterThan(164); expect(y).toBeLessThan(606);
   }
-  const previous = transform;
-  renderer.armAutoFit(); simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
-  expect(d3.zoomTransform(document.querySelector('svg')!)).toEqual(previous);
 });
 
-it('suppresses automatic fitting after user zoom and resets that choice on clear', () => {
-  const svg = document.querySelector('svg')!;
-  renderer.armAutoFit();
-  svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, clientX: 200, clientY: 150 }));
-  const manual = d3.zoomTransform(svg);
-  simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
-  expect(d3.zoomTransform(svg)).toEqual(manual);
+it('fits a single author and handles an empty graph', async () => {
   graph.clear();
   graph.addNode({ id: '1', recid: 1, name: 'Solo', isRoot: true }); flushFrame();
-  renderer.armAutoFit(); simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
-  const fit = d3.zoomTransform(svg);
+  simulation.stop();
+  renderer.fitGraph();
+  await new Promise(resolve => setTimeout(resolve, 450));
+  const fit = d3.zoomTransform(document.querySelector('svg')!);
   expect(Number.isFinite(fit.x) && Number.isFinite(fit.y) && Number.isFinite(fit.k)).toBe(true);
   expect(fit.k).toBeGreaterThan(0);
   graph.clear(); renderer.fitGraph();
-  expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
+  expect(d3.zoomTransform(document.querySelector('svg')!)).toEqual(d3.zoomIdentity);
 });
 
 it('keeps domain endpoints and author records free of simulation fields', () => {
@@ -361,20 +333,4 @@ it.each(['clear', 'destroy'])('cancels queued rendering on %s', action => {
     graph.addNode({ id: '4', recid: 4, name: 'After destruction', isRoot: false });
     expect(frameCallbacks.size).toBe(0);
   }
-});
-
-it('fits when root fetching finishes after the simulation has already settled', () => {
-  simulation.stop().alpha(0);
-  renderer.armAutoFit();
-  expect(d3.zoomTransform(document.querySelector('svg')!)).not.toEqual(d3.zoomIdentity);
-});
-
-it('fits after queued labels finish on an already settled network', () => {
-  simulation.stop().alpha(0);
-  graph.updateNodeName('2', 'Enriched name');
-  renderer.armAutoFit();
-  expect(d3.zoomTransform(document.querySelector('svg')!)).toEqual(d3.zoomIdentity);
-  flushFrame();
-  expect(d3.zoomTransform(document.querySelector('svg')!)).not.toEqual(d3.zoomIdentity);
-  expect(simulation.alpha()).toBe(0);
 });

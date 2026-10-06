@@ -39,10 +39,7 @@ function showLanding(): void {
 new SearchUI(searchContainer, async (bai, name, recid) => {
   showGraphView();
   progress.show();
-  await networkBuilder.build(bai, name, recid, (p) => {
-    progress.update(p);
-    if (p.phase === 'fetching-coauthors' || p.phase === 'done' || p.phase === 'partial') renderer.armAutoFit();
-  });
+  await networkBuilder.build(bai, name, recid, (p) => progress.update(p));
 });
 
 const searchInput = searchContainer.querySelector<HTMLInputElement>('.search-input')!;

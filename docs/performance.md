@@ -117,7 +117,7 @@ The production browser check uses controlled API responses at desktop width
 blocked, so layout uses the system fallback. It checks search loading, keyboard
 retry and selection, focus after selection and home, reference-only identities,
 editor exclusion, live mouse/touch highlights, persistent partial warnings,
-filter visibility, automatic fitting around overlays, explicit fitting, and
+filter visibility, stable framing through loading, explicit fitting around overlays, and
 immediate identity zoom after home. It saves screenshots to a temporary folder
 and rejects uncaught application exceptions. These fixtures do not verify live
 InspireHEP responses.
