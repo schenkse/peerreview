@@ -39,7 +39,10 @@ new SearchUI(searchContainer, async (bai, name, recid) => {
   networkBuilder.cancel();
   graphState.clear();
   progress.show();
-  await networkBuilder.build(bai, name, recid, (p) => progress.update(p));
+  await networkBuilder.build(bai, name, recid, (p) => {
+    progress.update(p);
+    if (p.phase === 'fetching-coauthors' || p.phase === 'done' || p.phase === 'partial') renderer.armAutoFit();
+  });
 });
 
 const searchInput = searchContainer.querySelector<HTMLInputElement>('.search-input')!;
@@ -92,7 +95,7 @@ document.getElementById('theme-toggle')!.addEventListener('click', () => {
 
 document.getElementById('zoom-in')!.addEventListener('click', () => renderer.zoomIn());
 document.getElementById('zoom-out')!.addEventListener('click', () => renderer.zoomOut());
-document.getElementById('zoom-reset')!.addEventListener('click', () => renderer.resetView());
+document.getElementById('zoom-reset')!.addEventListener('click', () => renderer.fitGraph());
 
 const about = document.getElementById('about') as HTMLDialogElement;
 document.getElementById('about-btn')!.addEventListener('click', () => about.showModal());

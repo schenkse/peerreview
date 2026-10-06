@@ -237,11 +237,78 @@ it('clears zoom and pan immediately and interrupts pending view transitions', as
   expect(document.querySelectorAll('.node')).toHaveLength(1);
 });
 
-it('retains the animated reset button behavior', () => {
+it('animates explicit fitting', () => {
   const svg = document.querySelector('svg')!;
   svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, clientX: 200, clientY: 150 }));
-  renderer.resetView();
+  renderer.fitGraph();
   // The button schedules an animation; graph clearing resets synchronously.
   expect(d3.zoomTransform(svg).k).toBeGreaterThan(1);
   d3.select(svg).interrupt();
+});
+
+it.each(['pan', 'drag'])('suppresses automatic fitting after a user %s', action => {
+  simulation.stop().alpha(0.2);
+  renderer.armAutoFit();
+  const svg = document.querySelector('svg')!;
+  const view = document.defaultView!;
+  const target = action === 'pan' ? svg : document.querySelector('.node[data-id="1"]')!;
+  const dispatch = (element: EventTarget, type: string, x: number, y: number, buttons = 0) => {
+    const event = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, buttons });
+    // jsdom's Window proxy fails UIEvent's constructor brand check.
+    Object.defineProperty(event, 'view', { value: view });
+    element.dispatchEvent(event);
+  };
+  dispatch(target, 'mousedown', 100, 100, 1);
+  dispatch(window, 'mousemove', 140, 130, 1);
+  dispatch(window, 'mouseup', 140, 130);
+  const manual = d3.zoomTransform(svg);
+  simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
+  expect(d3.zoomTransform(svg)).toEqual(manual);
+  if (action === 'pan') expect(manual.x).not.toBe(0);
+  else expect(simulation.nodes()[0].fx).toBeNull();
+});
+
+it('fits node radii inside a mobile viewport and reserves overlays', () => {
+  graph.clear();
+  const container = document.getElementById('graph')!;
+  container.getBoundingClientRect = () => ({ width: 320, height: 700, top: 0 }) as DOMRect;
+  Object.defineProperties(container, { clientWidth: { value: 320 }, clientHeight: { value: 700 } });
+  const status = document.createElement('div'); status.id = 'status'; document.body.append(status);
+  status.getBoundingClientRect = () => ({ height: 80, bottom: 140 }) as DOMRect;
+  const controls = document.createElement('div'); controls.id = 'zoom-controls'; document.body.append(controls);
+  controls.getBoundingClientRect = () => ({ height: 48, top: 630 }) as DOMRect;
+  window.dispatchEvent(new Event('resize'));
+  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
+  graph.addNode({ id: '2', recid: 2, name: 'Other', isRoot: false });
+  const nodes = simulation.nodes();
+  nodes[0].x = -300; nodes[0].y = -500;
+  nodes[1].x = 900; nodes[1].y = 1300;
+  renderer.armAutoFit();
+  simulation.on('end')!.call(simulation);
+  const transform = d3.zoomTransform(document.querySelector('svg')!);
+  for (const node of nodes) {
+    const [x, y] = transform.apply([node.x!, node.y!]);
+    expect(x).toBeGreaterThan(24); expect(x).toBeLessThan(296);
+    expect(y).toBeGreaterThan(164); expect(y).toBeLessThan(606);
+  }
+  const previous = transform;
+  renderer.armAutoFit(); simulation.on('end')!.call(simulation);
+  expect(d3.zoomTransform(document.querySelector('svg')!)).toEqual(previous);
+});
+
+it('suppresses automatic fitting after user zoom and resets that choice on clear', () => {
+  const svg = document.querySelector('svg')!;
+  renderer.armAutoFit();
+  svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, clientX: 200, clientY: 150 }));
+  const manual = d3.zoomTransform(svg);
+  simulation.on('end')!.call(simulation);
+  expect(d3.zoomTransform(svg)).toEqual(manual);
+  graph.clear();
+  graph.addNode({ id: '1', recid: 1, name: 'Solo', isRoot: true });
+  renderer.armAutoFit(); simulation.on('end')!.call(simulation);
+  const fit = d3.zoomTransform(svg);
+  expect(Number.isFinite(fit.x) && Number.isFinite(fit.y) && Number.isFinite(fit.k)).toBe(true);
+  expect(fit.k).toBeGreaterThan(0);
+  graph.clear(); renderer.fitGraph();
+  expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
 });

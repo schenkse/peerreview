@@ -28,6 +28,9 @@ export class GraphRenderer {
   private height: number;
   private resizeAbort = new AbortController();
   private linkStrengths = new Map<CoauthorEdge, number>();
+  private autoFitRequested = false;
+  private autoFitArmed = false;
+  private interacted = false;
   private degreeMap = new Map<string, number>();
 
   constructor(
@@ -70,6 +73,8 @@ export class GraphRenderer {
     this.zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 5])
+      .extent((): [[number, number], [number, number]] => [[0, 0], [this.width, this.height]])
+      .on('start', event => { if (event.sourceEvent) this.markInteraction(); })
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
       });
@@ -95,7 +100,13 @@ export class GraphRenderer {
         d3.forceCenter(this.width / 2, this.height / 2).strength(0.05),
       )
       .force('collide', d3.forceCollide<AuthorNode>().radius((d) => this.nodeRadius(d) + 4))
-      .on('tick', () => this.ticked());
+      .on('tick', () => this.ticked())
+      .on('end', () => {
+        if (this.autoFitArmed) {
+          this.autoFitArmed = false;
+          this.applyFit(0);
+        }
+      });
 
     // Label edits do not change forces or node positions.
     graphState.on('changed', (change) => {
@@ -117,18 +128,66 @@ export class GraphRenderer {
   }
 
   zoomIn(): void {
+    this.markInteraction();
     this.svg.transition().duration(250).call(this.zoom.scaleBy, 1.4);
   }
 
   zoomOut(): void {
+    this.markInteraction();
     this.svg.transition().duration(250).call(this.zoom.scaleBy, 1 / 1.4);
   }
 
-  resetView(): void {
-    this.svg.transition().duration(400).call(this.zoom.transform, d3.zoomIdentity);
+  armAutoFit(): void {
+    if (this.autoFitRequested) return;
+    this.autoFitRequested = true;
+    this.autoFitArmed = !this.interacted;
+  }
+
+  fitGraph(): void {
+    this.markInteraction();
+    this.applyFit(400);
+  }
+
+  private markInteraction(): void {
+    this.interacted = true;
+    this.autoFitArmed = false;
+  }
+
+  private applyFit(duration: number): void {
+    const nodes = this.simulation.nodes().filter(node => Number.isFinite(node.x) && Number.isFinite(node.y));
+    if (!nodes.length) {
+      this.svg.interrupt().call(this.zoom.transform, d3.zoomIdentity);
+      return;
+    }
+    const rect = this.container.getBoundingClientRect();
+    const padding = 24;
+    let top = padding;
+    let bottom = this.height - padding;
+    for (const element of document.querySelectorAll<HTMLElement>('.bar, #status')) {
+      const bounds = element.getBoundingClientRect();
+      if (bounds.height > 0) top = Math.max(top, bounds.bottom - rect.top + padding);
+    }
+    for (const element of document.querySelectorAll<HTMLElement>('#legend, #zoom-controls')) {
+      const bounds = element.getBoundingClientRect();
+      if (bounds.height > 0) bottom = Math.min(bottom, bounds.top - rect.top - padding);
+    }
+    const minX = Math.min(...nodes.map(n => n.x! - this.nodeRadius(n)));
+    const maxX = Math.max(...nodes.map(n => n.x! + this.nodeRadius(n)));
+    const minY = Math.min(...nodes.map(n => n.y! - this.nodeRadius(n)));
+    const maxY = Math.max(...nodes.map(n => n.y! + this.nodeRadius(n)));
+    const scale = Math.min(5, Math.max(1, this.width - padding * 2) / Math.max(1, maxX - minX),
+      Math.max(1, bottom - top) / Math.max(1, maxY - minY));
+    const transform = d3.zoomIdentity.translate(this.width / 2 - scale * (minX + maxX) / 2,
+      (top + bottom) / 2 - scale * (minY + maxY) / 2).scale(scale);
+    this.svg.interrupt();
+    if (duration) this.svg.transition().duration(duration).call(this.zoom.transform, transform);
+    else this.svg.call(this.zoom.transform, transform);
   }
 
   reset(): void {
+    this.autoFitRequested = false;
+    this.autoFitArmed = false;
+    this.interacted = false;
     this.svg.interrupt().call(this.zoom.transform, d3.zoomIdentity);
     this.hover.clear();
     this.links.remove();
@@ -333,6 +392,7 @@ export class GraphRenderer {
     return d3
       .drag<SVGCircleElement, AuthorNode>()
       .on('start', (event, d) => {
+        this.markInteraction();
         if (!event.active) this.simulation.alphaTarget(0.3).restart();
         d.fx = d.x;
         d.fy = d.y;
