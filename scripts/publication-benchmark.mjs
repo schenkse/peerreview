@@ -1,9 +1,9 @@
 // Run with node --expose-gc scripts/publication-benchmark.mjs.
-// Synthetic ID-only responses; timings exclude network latency and fixture creation.
+// Synthetic normalized ID-only responses; timings exclude network latency and fixture creation.
 import { createServer } from 'vite';
 
 if (!global.gc) throw new Error('Run with --expose-gc');
-const server = await createServer({ server: { middlewareMode: true, hmr: false }, optimizeDeps: { noDiscovery: true, include: [] } });
+const server = await createServer({ configFile: false, server: { middlewareMode: true, hmr: false, ws: false }, optimizeDeps: { noDiscovery: true, include: [] } });
 try {
   const { TtlCache } = await server.ssrLoadModule('/src/cache.ts');
   const { GraphState } = await server.ssrLoadModule('/src/graph-state.ts');
@@ -17,26 +17,29 @@ try {
   function measure(pages) {
     global.gc();
     const startHeap = process.memoryUsage().heapUsed;
-    const cache = new TtlCache();
+    const cache = new TtlCache(600_000, Date.now, 3);
     const graph = new GraphState();
     for (let i = 1; i <= 500; i++) graph.addNode({ id: String(i), recid: i, name: `Author ${i}`, isRoot: i === 1 });
     const builder = new NetworkBuilder(graph);
     const seen = new Set();
     let parseMs = 0;
     let processMs = 0;
-    for (const [index, json] of pages.entries()) {
+    function processPage(json) {
       const beforeParse = performance.now();
       const response = JSON.parse(json);
       const beforeProcess = performance.now();
       parseMs += beforeProcess - beforeParse;
       builder.addCrossEdges(response.hits.hits, seen);
       processMs += performance.now() - beforeProcess;
-      cache.set(String(index), response);
     }
+    for (const json of pages) processPage(json);
+    const processingIds = seen.size;
+    seen.clear();
+    for (let i = 0; i < 3; i++) cache.set(`network-${i}`, graph.exportSnapshot());
     global.gc();
     const retainedMiB = (process.memoryUsage().heapUsed - startHeap) / 1024 ** 2;
     // Read after GC to keep the cache, graph, and publication set live through measurement.
-    if (!cache.get(String(pages.length - 1)) || seen.size !== publicationCount || graph.edgeCount !== 3500) {
+    if (!cache.get('network-2') || processingIds !== publicationCount || graph.edgeCount !== 3500) {
       throw new Error(`Unexpected retained fixture state: ${graph.edgeCount} edges`);
     }
     return { parseMs, processMs, retainedMiB };
