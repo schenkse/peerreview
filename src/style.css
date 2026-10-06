@@ -336,7 +336,7 @@ button {
 .progress-container { display: none; }
 .progress-container.visible { display: block; }
 
-.progress-text { font-size: 13px; }
+.progress-text, #publication-filter { font-size: 13px; }
 
 .progress-fill {
   width: 0%;

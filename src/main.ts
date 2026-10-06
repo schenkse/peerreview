@@ -3,6 +3,9 @@ import { GraphRenderer } from './graph-renderer';
 import { NetworkBuilder } from './network-builder';
 import { ProgressIndicator } from './progress';
 import { SearchUI } from './search';
+import { MAX_COAUTHOR_COUNT } from './constants';
+
+document.getElementById('publication-filter')!.textContent = `Papers with at most ${MAX_COAUTHOR_COUNT} authors`;
 
 const graphState = new GraphState();
 
