@@ -1,5 +1,5 @@
 import { INSPIRE_BASE_URL, DEFAULT_PAGE_SIZE, MAX_COAUTHOR_COUNT } from './constants';
-import { rateLimiter } from './rate-limiter';
+import { rateLimiter, type RequestPriority } from './rate-limiter';
 import { TtlCache } from './cache';
 import type { InspireAuthorHit, InspirePubHit, InspireConnectionPubHit, InspireSearchResponse } from './types';
 
@@ -12,12 +12,12 @@ export class ApiError extends Error {
 
 const responseCache = new TtlCache<unknown>();
 
-async function request<T>(url: string, signal?: AbortSignal): Promise<InspireSearchResponse<T>> {
+async function request<T>(url: string, signal?: AbortSignal, priority: RequestPriority = 'background'): Promise<InspireSearchResponse<T>> {
   signal?.throwIfAborted();
   const cached = responseCache.get(url) as InspireSearchResponse<T> | undefined;
   if (cached) return cached;
 
-  const res = await rateLimiter.enqueue(url, signal);
+  const res = await rateLimiter.enqueue(url, signal, priority);
   if (!res.ok) {
     throw new ApiError(res.status, res.statusText);
   }
@@ -33,7 +33,7 @@ export function searchAuthors(
 ): Promise<InspireSearchResponse<InspireAuthorHit>> {
   const params = new URLSearchParams({ q: query, size: '10',
     fields: 'name,ids,positions,control_number,stub' });
-  return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
+  return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal, 'interactive');
 }
 
 export async function fetchPublications(

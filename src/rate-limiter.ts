@@ -1,6 +1,10 @@
 import { RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS } from './constants';
 
+export type RequestPriority = 'interactive' | 'background';
+
 interface QueueEntry {
+  priority: RequestPriority;
+  order: number;
   url: string;
   signal?: AbortSignal;
   resolve: (res: Response) => void;
@@ -10,6 +14,7 @@ interface QueueEntry {
 }
 
 export class RateLimiter {
+  private nextOrder = 0;
   private timestamps: number[] = [];
   private queue: QueueEntry[] = [];
   private drainScheduled = false;
@@ -17,14 +22,14 @@ export class RateLimiter {
   private resetAt: number | null = null;
   private retryAt = 0;
 
-  enqueue(url: string, signal?: AbortSignal): Promise<Response> {
+  enqueue(url: string, signal?: AbortSignal, priority: RequestPriority = 'background'): Promise<Response> {
     return new Promise<Response>((resolve, reject) => {
       if (signal?.aborted) {
         reject(new DOMException('Aborted', 'AbortError'));
         return;
       }
 
-      const entry: QueueEntry = { url, signal, resolve, reject, retries: 0 };
+      const entry: QueueEntry = { url, signal, resolve, reject, retries: 0, priority, order: this.nextOrder++ };
 
       if (signal) {
         const onAbort = () => {
@@ -50,6 +55,8 @@ export class RateLimiter {
     // Remove expired timestamps from the sliding window
     this.timestamps = this.timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
 
+    // Retries keep their original place within their priority class.
+    this.queue.sort((a, b) => Number(b.priority === 'interactive') - Number(a.priority === 'interactive') || a.order - b.order);
     while (this.queue.length > 0 && this.canSend(now)) {
       const entry = this.queue.shift()!;
 

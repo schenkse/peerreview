@@ -58,6 +58,40 @@ describe('RateLimiter', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('prioritizes searches under exhausted quota and preserves FIFO within each priority', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => { calls.push(url); return okResponse(); }));
+    const limiter = new RateLimiter();
+    await Promise.all(Array.from({ length: 15 }, (_, i) => limiter.enqueue(`initial-${i}`)));
+    const queued = [limiter.enqueue('background-1'), limiter.enqueue('background-2'),
+      limiter.enqueue('search-1', undefined, 'interactive'), limiter.enqueue('search-2', undefined, 'interactive')];
+    const controller = new AbortController();
+    const cancelled = limiter.enqueue('cancelled-search', controller.signal, 'interactive');
+    const rejected = expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort(); await rejected;
+    await vi.advanceTimersByTimeAsync(5050);
+    await Promise.all(queued);
+    expect(calls.slice(15)).toEqual(['search-1', 'search-2', 'background-1', 'background-2']);
+  });
+
+  it('retains interactive priority and FIFO when retrying after a server cooldown', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      return calls.length === 1 ? new Response('', { status: 429, headers: { 'Retry-After': '10' } }) : okResponse();
+    }));
+    const limiter = new RateLimiter();
+    const first = limiter.enqueue('search-1', undefined, 'interactive');
+    await Promise.resolve();
+    const background = limiter.enqueue('background');
+    const second = limiter.enqueue('search-2', undefined, 'interactive');
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(calls).toEqual(['search-1']);
+    await vi.advanceTimersByTimeAsync(51);
+    await Promise.all([first, background, second]);
+    expect(calls).toEqual(['search-1', 'search-1', 'search-2', 'background']);
+  });
+
   it('rejects immediately when the signal is already aborted', async () => {
     const rl = new RateLimiter();
     const ctrl = new AbortController();

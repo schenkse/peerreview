@@ -50,6 +50,7 @@ it('requests only the fields each operation consumes', async () => {
   await fetchConnectionPublications('Connection.fields');
   await fetchConnectionPublicationsBatch(['Batch.one', 'Batch.two']);
   await fetchAuthorProfiles([42]);
+  expect(enqueue.mock.calls.map(([, , priority]) => priority)).toEqual(['interactive', 'background', 'background', 'background', 'background']);
   const urls = enqueue.mock.calls.map(([url]) => new URL(url));
   expect(urls.map(url => url.searchParams.get('fields'))).toEqual([
     'name,ids,positions,control_number,stub', 'authors.record,authors.recid,authors.inspire_roles,authors.full_name,authors.ids',
