@@ -66,7 +66,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]'
   });
 }
 
-// One-line summary above the graph, e.g. "Edward Witten has 12 co-authors here, with 30 links between them."
+// One-line summary above the graph, e.g. "Edward Witten has 12 co-authors here, with 30 connections in this network."
 const summary = document.getElementById('summary')!;
 function renderSummary(): void {
   const root = graphState.getNodes().find((n) => n.isRoot);
@@ -80,7 +80,7 @@ function renderSummary(): void {
   const links = graphState.edgeCount;
   summary.replaceChildren(
     name,
-    ` has ${coauthors} co-author${coauthors === 1 ? '' : 's'} here, with ${links} link${links === 1 ? '' : 's'} between them.`,
+    ` has ${coauthors} co-author${coauthors === 1 ? '' : 's'} here, with ${links} connection${links === 1 ? '' : 's'} in this network.`,
   );
 }
 graphState.on('changed', renderSummary);
