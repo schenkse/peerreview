@@ -25,8 +25,10 @@ const barSlot = document.getElementById('bar-search')!;
 const progress = new ProgressIndicator(document.getElementById('progress')!, searchContainer);
 
 function showGraphView(): void {
+  const focused = searchContainer.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
   document.body.dataset.view = 'graph';
   barSlot.append(searchContainer);
+  focused?.focus({ preventScroll: true });
 }
 
 function showLanding(): void {
@@ -53,6 +55,7 @@ document.getElementById('home')!.addEventListener('click', () => {
   progress.hide();
   searchInput.value = '';
   showLanding();
+  searchInput.focus({ preventScroll: true });
 });
 
 // Example searches fill the box and open the normal autocomplete; picking an author still needs a BAI.

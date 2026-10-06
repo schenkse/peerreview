@@ -30,11 +30,13 @@ it('returns from the graph to home through the existing accessible button', asyn
   }] } });
   await import('./main');
   const input = document.querySelector<HTMLInputElement>('.search-input')!;
+  input.focus();
   input.value = 'Root';
   input.dispatchEvent(new Event('input'));
   await vi.advanceTimersByTimeAsync(300);
   document.querySelector<HTMLElement>('[role="option"]')!.click();
   expect(document.body.dataset.view).toBe('graph');
+  expect(document.activeElement).toBe(input);
   expect(document.querySelector('#publication-filter')?.textContent).toBe('Papers with at most 10 authors');
   expect(document.querySelector('#bar-search .search-input')).toBe(input);
   expect(document.querySelector('#summary')?.textContent).toContain('Root has 0 co-authors here, with 0 connections in this network.');
@@ -48,6 +50,7 @@ it('returns from the graph to home through the existing accessible button', asyn
   expect(document.body.dataset.view).toBe('landing');
   expect(document.querySelector('.hero .search-input')).toBe(input);
   expect(input.value).toBe('');
+  expect(document.activeElement).toBe(input);
   expect(document.querySelector('#summary')?.textContent).toBe('');
   expect(document.querySelector('#progress')?.classList.contains('visible')).toBe(false);
 });
