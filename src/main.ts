@@ -71,12 +71,17 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]'
 
 // One-line summary above the graph, e.g. "Edward Witten has 12 co-authors here, with 30 connections in this network."
 const summary = document.getElementById('summary')!;
+let previousSummary = '';
 function renderSummary(): void {
   const root = graphState.getNodes().find((n) => n.isRoot);
   if (!root) {
-    summary.replaceChildren();
+    if (previousSummary) summary.replaceChildren();
+    previousSummary = '';
     return;
   }
+  const summaryKey = JSON.stringify([root.name, graphState.nodeCount, graphState.edgeCount]);
+  if (summaryKey === previousSummary) return;
+  previousSummary = summaryKey;
   const name = document.createElement('b');
   name.textContent = root.name;
   const coauthors = graphState.nodeCount - 1;

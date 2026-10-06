@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import type { AuthorNode, CoauthorEdge } from './types';
+import type { AuthorNode, CoauthorEdge, GraphChange } from './types';
 
 export interface SimulationAuthorNode extends d3.SimulationNodeDatum {
   id: string;
@@ -42,6 +42,12 @@ export class GraphRenderer {
   private autoFitRequested = false;
   private autoFitArmed = false;
   private interacted = false;
+  private pendingChange: GraphChange | null = null;
+  private updateFrame: number | null = null;
+  private destroyed = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private onChanged = (change: GraphChange): void => this.scheduleUpdate(change);
+  private onCleared = (): void => this.reset();
   private simulationNodes = new Map<string, SimulationAuthorNode>();
 
   constructor(
@@ -65,6 +71,7 @@ export class GraphRenderer {
         ro.disconnect();
         this.onResize();
       });
+      this.resizeObserver = ro;
       ro.observe(container);
     }
 
@@ -120,22 +127,21 @@ export class GraphRenderer {
       });
 
     // Label edits do not change forces or node positions.
-    graphState.on('changed', (change) => {
-      if (change.topologyChanged) this.updateSimulation();
-      else {
-        if (change.weightsChanged) this.updateWeights();
-        if (change.labelsChanged) this.refreshLabels();
-      }
-    });
-    graphState.on('cleared', () => this.reset());
+    graphState.on('changed', this.onChanged);
+    graphState.on('cleared', this.onCleared);
 
     // Handle window resize
     window.addEventListener('resize', () => this.onResize(), { signal: this.resizeAbort.signal });
   }
 
   destroy(): void {
+    this.destroyed = true;
+    this.graphState.off('changed', this.onChanged);
+    this.graphState.off('cleared', this.onCleared);
     this.resizeAbort.abort();
-    this.simulation.stop();
+    this.resizeObserver?.disconnect();
+    this.reset();
+    this.svg.remove();
   }
 
   zoomIn(): void {
@@ -196,6 +202,7 @@ export class GraphRenderer {
   }
 
   reset(): void {
+    this.cancelUpdate();
     this.autoFitRequested = false;
     this.autoFitArmed = false;
     this.interacted = false;
@@ -216,6 +223,32 @@ export class GraphRenderer {
     this.simulation.nodes([]);
     (this.simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>).links([]);
     this.simulation.alpha(0).stop();
+  }
+
+  private cancelUpdate(): void {
+    if (this.updateFrame !== null) cancelAnimationFrame(this.updateFrame);
+    this.updateFrame = null;
+    this.pendingChange = null;
+  }
+
+  private scheduleUpdate(change: GraphChange): void {
+    if (this.destroyed) return;
+    const pending = this.pendingChange ?? { topologyChanged: false, weightsChanged: false, labelsChanged: false };
+    pending.topologyChanged ||= change.topologyChanged;
+    pending.weightsChanged ||= change.weightsChanged;
+    pending.labelsChanged ||= change.labelsChanged;
+    this.pendingChange = pending;
+    if (this.updateFrame !== null) return;
+    this.updateFrame = requestAnimationFrame(() => {
+      this.updateFrame = null;
+      const changes = this.pendingChange!;
+      this.pendingChange = null;
+      if (changes.topologyChanged) this.updateSimulation();
+      else {
+        if (changes.weightsChanged) this.updateWeights();
+        if (changes.labelsChanged) this.refreshLabels();
+      }
+    });
   }
 
   refreshColors(): void {

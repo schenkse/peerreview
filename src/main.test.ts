@@ -40,6 +40,16 @@ it('returns from the graph to home through the existing accessible button', asyn
   expect(document.querySelector('#publication-filter')?.textContent).toBe('Papers with at most 10 authors');
   expect(document.querySelector('#bar-search .search-input')).toBe(input);
   expect(document.querySelector('#summary')?.textContent).toContain('Root has 0 co-authors here, with 0 connections in this network.');
+  const currentGraph = (vi.mocked(NetworkBuilder).mock.results[0].value as unknown as { graph: GraphState }).graph;
+  currentGraph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false });
+  currentGraph.addOrUpdateEdge('1', '2');
+  expect(document.querySelector('#summary')?.textContent).toContain('1 connection in this network');
+  const summaryWrites = vi.spyOn(document.querySelector('#summary')!, 'replaceChildren');
+  currentGraph.addOrUpdateEdge('1', '2');
+  currentGraph.updateNodeName('2', 'Canonical coauthor');
+  expect(summaryWrites).not.toHaveBeenCalled();
+  currentGraph.updateNodeName('1', 'Canonical root');
+  expect(summaryWrites).toHaveBeenCalledOnce();
   const home = document.querySelector<HTMLButtonElement>('#home')!;
   expect(home.getAttribute('aria-label')).toBe('Return to home');
   expect(home.querySelector('.home-icon')?.getAttribute('aria-hidden')).toBe('true');

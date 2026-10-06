@@ -10,11 +10,22 @@ vi.mock('d3', async original => {
   return { ...actual, forceSimulation: vi.fn(actual.forceSimulation) };
 });
 
+let frameCallbacks: Map<number, FrameRequestCallback>;
+let nextFrame: number;
+function flushFrame(): void {
+  const callbacks = [...frameCallbacks.values()];
+  frameCallbacks.clear();
+  callbacks.forEach(callback => callback(0));
+}
+
 let renderer: GraphRenderer;
 let graph: GraphState;
 let simulation: d3.Simulation<SimulationAuthorNode, SimulationCoauthorEdge>;
 
 beforeEach(() => {
+  frameCallbacks = new Map(); nextFrame = 0;
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frameCallbacks.set(++nextFrame, callback); return nextFrame; });
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frameCallbacks.delete(id));
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
   document.body.innerHTML = '<div id="graph"></div>';
   const container = document.getElementById('graph')!;
@@ -28,10 +39,10 @@ beforeEach(() => {
     height: { value: { baseVal: { value: 600 } } },
   });
   graph.beginBatch();
-  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
-  graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false });
-  graph.addOrUpdateEdge('1', '2');
-  graph.endBatch();
+  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true }); flushFrame();
+  graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false }); flushFrame();
+  graph.addOrUpdateEdge('1', '2'); flushFrame();
+  graph.endBatch(); flushFrame();
   simulation = vi.mocked(d3.forceSimulation).mock.results.at(-1)!.value;
   simulation.stop().alpha(0);
 });
@@ -43,9 +54,9 @@ afterEach(() => {
 });
 
 describe('GraphRenderer appearance updates', () => {
-  it('renders a standalone root immediately after an unbatched insertion', () => {
+  it('renders a standalone root on the next animation frame', () => {
     graph.clear();
-    graph.addNode({ id: '3', recid: 3, name: 'Solo author', isRoot: true });
+    graph.addNode({ id: '3', recid: 3, name: 'Solo author', isRoot: true }); flushFrame();
     expect(document.querySelectorAll('.node')).toHaveLength(1);
     expect(document.querySelector('.label')?.textContent).toBe('Solo author');
   });
@@ -66,7 +77,7 @@ describe('GraphRenderer appearance updates', () => {
     const position = [node.x, node.y];
     graph.beginBatch();
     graph.updateNodeName('2', 'Canonical author name');
-    graph.endBatch();
+    graph.endBatch(); flushFrame();
     expect(document.querySelector('.label-group[data-id="2"] text')?.textContent).toBe('Canonical author name');
     expect([node.x, node.y]).toEqual(position);
     expect(restart).not.toHaveBeenCalled();
@@ -75,8 +86,8 @@ describe('GraphRenderer appearance updates', () => {
   it('restarts the simulation when an edge weight changes', () => {
     const restart = vi.spyOn(simulation, 'restart');
     graph.beginBatch();
-    graph.addOrUpdateEdge('1', '2');
-    graph.endBatch();
+    graph.addOrUpdateEdge('1', '2'); flushFrame();
+    graph.endBatch(); flushFrame();
     expect(restart).toHaveBeenCalledOnce();
     expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(2) * 1.25));
   });
@@ -84,14 +95,14 @@ describe('GraphRenderer appearance updates', () => {
   it('labels only the root and the best-connected co-authors in larger networks', () => {
     graph.clear();
     graph.beginBatch();
-    graph.addNode({ id: 'r', recid: 0, name: 'Root', isRoot: true });
+    graph.addNode({ id: 'r', recid: 0, name: 'Root', isRoot: true }); flushFrame();
     // Co-authors c0..c7 are all linked to each other; c8..c14 only to the root.
     for (let i = 0; i < 15; i++) {
-      graph.addNode({ id: `c${i}`, recid: i + 1, name: `Coauthor ${i}`, isRoot: false });
-      graph.addOrUpdateEdge('r', `c${i}`);
-      if (i < 8) for (let j = 0; j < i; j++) graph.addOrUpdateEdge(`c${i}`, `c${j}`);
+      graph.addNode({ id: `c${i}`, recid: i + 1, name: `Coauthor ${i}`, isRoot: false }); flushFrame();
+      graph.addOrUpdateEdge('r', `c${i}`); flushFrame();
+      if (i < 8) for (let j = 0; j < i; j++) graph.addOrUpdateEdge(`c${i}`, `c${j}`); flushFrame();
     }
-    graph.endBatch();
+    graph.endBatch(); flushFrame();
     const labelled = [...document.querySelectorAll('.label-group:not(.minor)')].map((el) => el.getAttribute('data-id'));
     expect(labelled.sort()).toEqual(['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'r']);
   });
@@ -107,7 +118,7 @@ it('updates weights without rebuilding nodes, collision forces, or DOM joins', (
   const force = simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>;
   const links = vi.spyOn(force, 'links');
   const strength = vi.spyOn(force, 'strength');
-  graph.addOrUpdateEdge('1', '2');
+  graph.addOrUpdateEdge('1', '2'); flushFrame();
   expect(nodes).not.toHaveBeenCalled();
   expect(links).not.toHaveBeenCalled();
   expect(strength).toHaveBeenCalledWith(expect.any(Function));
@@ -119,13 +130,13 @@ it('updates weights without rebuilding nodes, collision forces, or DOM joins', (
 
 it('updates capped edge widths without refreshing strengths or reheating', () => {
   graph.beginBatch();
-  for (let i = 1; i < 10; i++) graph.addOrUpdateEdge('1', '2');
-  graph.endBatch();
+  for (let i = 1; i < 10; i++) graph.addOrUpdateEdge('1', '2'); flushFrame();
+  graph.endBatch(); flushFrame();
   simulation.stop().alpha(0);
   const restart = vi.spyOn(simulation, 'restart');
   const force = simulation.force('link') as d3.ForceLink<SimulationAuthorNode, SimulationCoauthorEdge>;
   const strength = vi.spyOn(force, 'strength');
-  graph.addOrUpdateEdge('1', '2');
+  graph.addOrUpdateEdge('1', '2'); flushFrame();
   expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(11) * 1.25));
   expect(strength).not.toHaveBeenCalled();
   expect(restart).not.toHaveBeenCalled();
@@ -137,22 +148,22 @@ it.each([false, true])('refreshes active highlights as topology grows, touch=%s'
   vi.stubGlobal('matchMedia', () => ({ matches: touch }));
   graph.clear();
   graph.beginBatch();
-  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
-  graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false });
-  graph.addOrUpdateEdge('1', '2');
-  graph.endBatch();
+  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true }); flushFrame();
+  graph.addNode({ id: '2', recid: 2, name: 'Coauthor', isRoot: false }); flushFrame();
+  graph.addOrUpdateEdge('1', '2'); flushFrame();
+  graph.endBatch(); flushFrame();
   const root = document.querySelector('.node[data-id="1"]')!;
   root.dispatchEvent(new MouseEvent(touch ? 'click' : 'mouseenter', { bubbles: touch }));
   graph.beginBatch();
-  graph.addNode({ id: '3', recid: 3, name: 'New neighbor', isRoot: false });
-  graph.addNode({ id: '4', recid: 4, name: 'Unconnected', isRoot: false });
-  graph.addOrUpdateEdge('1', '3');
-  graph.endBatch();
+  graph.addNode({ id: '3', recid: 3, name: 'New neighbor', isRoot: false }); flushFrame();
+  graph.addNode({ id: '4', recid: 4, name: 'Unconnected', isRoot: false }); flushFrame();
+  graph.addOrUpdateEdge('1', '3'); flushFrame();
+  graph.endBatch(); flushFrame();
   expect(document.querySelector('.node[data-id="3"]')?.classList.contains('highlighted')).toBe(true);
   expect(document.querySelector('.label-group[data-id="3"]')?.classList.contains('highlighted')).toBe(true);
   expect(document.querySelector('.node[data-id="4"]')?.classList.contains('dimmed')).toBe(true);
   expect(document.querySelectorAll('.edge.highlighted')).toHaveLength(2);
-  graph.addOrUpdateEdge('1', '4');
+  graph.addOrUpdateEdge('1', '4'); flushFrame();
   expect(document.querySelector('.node[data-id="4"]')?.classList.contains('highlighted')).toBe(true);
   if (touch) {
     root.dispatchEvent(new MouseEvent('mouseleave'));
@@ -162,7 +173,7 @@ it.each([false, true])('refreshes active highlights as topology grows, touch=%s'
   expect(document.querySelectorAll('.highlighted, .dimmed, .pulse')).toHaveLength(0);
   root.dispatchEvent(new MouseEvent(touch ? 'click' : 'mouseenter'));
   graph.clear();
-  graph.addNode({ id: '1', recid: 1, name: 'Next root', isRoot: true });
+  graph.addNode({ id: '1', recid: 1, name: 'Next root', isRoot: true }); flushFrame();
   expect(document.querySelectorAll('.highlighted, .dimmed, .pulse')).toHaveLength(0);
 });
 
@@ -171,10 +182,10 @@ function largeGraph() {
   graph.clear();
   graph.beginBatch();
   for (let i = 1; i <= 500; i++) {
-    graph.addNode({ id: String(i), recid: i, name: `Author ${i}`, isRoot: i === 1 });
-    if (i > 1) graph.addOrUpdateEdge(String(i - 1), String(i));
+    graph.addNode({ id: String(i), recid: i, name: `Author ${i}`, isRoot: i === 1 }); flushFrame();
+    if (i > 1) graph.addOrUpdateEdge(String(i - 1), String(i)); flushFrame();
   }
-  graph.endBatch();
+  graph.endBatch(); flushFrame();
   simulation.stop().alpha(0);
 }
 
@@ -231,7 +242,7 @@ it('clears zoom and pan immediately and interrupts pending view transitions', as
   graph.clear();
   expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
   expect(svg.firstElementChild?.getAttribute('transform')).toBe('translate(0,0) scale(1)');
-  graph.addNode({ id: '9', recid: 9, name: 'New root', isRoot: true });
+  graph.addNode({ id: '9', recid: 9, name: 'New root', isRoot: true }); flushFrame();
   await new Promise(resolve => setTimeout(resolve, 300));
   expect(d3.zoomTransform(svg)).toEqual(d3.zoomIdentity);
   expect(document.querySelectorAll('.node')).toHaveLength(1);
@@ -278,8 +289,8 @@ it('fits node radii inside a mobile viewport and reserves overlays', () => {
   const controls = document.createElement('div'); controls.id = 'zoom-controls'; document.body.append(controls);
   controls.getBoundingClientRect = () => ({ height: 48, top: 630 }) as DOMRect;
   window.dispatchEvent(new Event('resize'));
-  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
-  graph.addNode({ id: '2', recid: 2, name: 'Other', isRoot: false });
+  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true }); flushFrame();
+  graph.addNode({ id: '2', recid: 2, name: 'Other', isRoot: false }); flushFrame();
   const nodes = simulation.nodes();
   nodes[0].x = -300; nodes[0].y = -500;
   nodes[1].x = 900; nodes[1].y = 1300;
@@ -304,7 +315,7 @@ it('suppresses automatic fitting after user zoom and resets that choice on clear
   simulation.on('end')!.call(simulation);
   expect(d3.zoomTransform(svg)).toEqual(manual);
   graph.clear();
-  graph.addNode({ id: '1', recid: 1, name: 'Solo', isRoot: true });
+  graph.addNode({ id: '1', recid: 1, name: 'Solo', isRoot: true }); flushFrame();
   renderer.armAutoFit(); simulation.on('end')!.call(simulation);
   const fit = d3.zoomTransform(svg);
   expect(Number.isFinite(fit.x) && Number.isFinite(fit.y) && Number.isFinite(fit.k)).toBe(true);
@@ -319,7 +330,35 @@ it('keeps domain endpoints and author records free of simulation fields', () => 
   expect(graph.getNode('1')).toEqual({ id: '1', recid: 1, name: 'Root', isRoot: true });
   const root = simulation.nodes().find(n => n.id === '1')!;
   const coordinates = [root.x, root.y];
-  graph.addNode({ id: '3', recid: 3, name: 'New', isRoot: false });
+  graph.addNode({ id: '3', recid: 3, name: 'New', isRoot: false }); flushFrame();
   expect(simulation.nodes().find(n => n.id === '1')).toBe(root);
   expect([root.x, root.y]).toEqual(coordinates);
+});
+
+it('merges topology, label, and weight changes into one update per frame', () => {
+  const restart = vi.spyOn(simulation, 'restart');
+  graph.updateNodeName('2', 'Changed');
+  graph.addOrUpdateEdge('1', '2');
+  graph.addNode({ id: '3', recid: 3, name: 'New', isRoot: false });
+  graph.addOrUpdateEdge('1', '3');
+  expect(restart).not.toHaveBeenCalled();
+  expect(frameCallbacks.size).toBe(1);
+  flushFrame();
+  expect(restart).toHaveBeenCalledOnce();
+  expect(document.querySelectorAll('.node')).toHaveLength(3);
+  expect(document.querySelector('.label-group[data-id="2"] text')?.textContent).toBe('Changed');
+  expect(document.querySelector('.edge')?.getAttribute('stroke-width')).toBe(String(Math.sqrt(2) * 1.25));
+});
+
+it.each(['clear', 'destroy'])('cancels queued rendering on %s', action => {
+  graph.addNode({ id: '3', recid: 3, name: 'Queued', isRoot: false });
+  expect(frameCallbacks.size).toBe(1);
+  if (action === 'clear') graph.clear(); else renderer.destroy();
+  expect(frameCallbacks.size).toBe(0);
+  flushFrame();
+  expect(document.querySelectorAll('.node')).toHaveLength(0);
+  if (action === 'destroy') {
+    graph.addNode({ id: '4', recid: 4, name: 'After destruction', isRoot: false });
+    expect(frameCallbacks.size).toBe(0);
+  }
 });
