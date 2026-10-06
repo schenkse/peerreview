@@ -1,5 +1,7 @@
 import * as d3 from 'd3';
 import type { AuthorNode, CoauthorEdge, GraphChange } from './types';
+import type { GraphState } from './graph-state';
+import { HoverController } from './hover';
 
 export interface SimulationAuthorNode extends d3.SimulationNodeDatum {
   id: string;
@@ -11,8 +13,6 @@ export interface SimulationCoauthorEdge extends d3.SimulationLinkDatum<Simulatio
   target: string | SimulationAuthorNode;
   record: CoauthorEdge;
 }
-import type { GraphState } from './graph-state';
-import { HoverController } from './hover';
 
 // Larger networks label only the root and this many best-connected co-authors;
 // the rest show their names on hover. Networks up to ALL_LABELS_MAX co-authors label everyone.
@@ -119,12 +119,7 @@ export class GraphRenderer {
       )
       .force('collide', d3.forceCollide<SimulationAuthorNode>().radius((d) => this.nodeRadius(d) + 4))
       .on('tick', () => this.ticked())
-      .on('end', () => {
-        if (this.autoFitArmed) {
-          this.autoFitArmed = false;
-          this.applyFit(0);
-        }
-      });
+      .on('end', () => this.fitIfSettled());
 
     // Label edits do not change forces or node positions.
     graphState.on('changed', this.onChanged);
@@ -158,6 +153,14 @@ export class GraphRenderer {
     if (this.autoFitRequested) return;
     this.autoFitRequested = true;
     this.autoFitArmed = !this.interacted;
+    this.fitIfSettled();
+  }
+
+  private fitIfSettled(): void {
+    if (this.autoFitArmed && this.updateFrame === null && this.simulation.alpha() < this.simulation.alphaMin()) {
+      this.autoFitArmed = false;
+      this.applyFit(0);
+    }
   }
 
   fitGraph(): void {
@@ -248,6 +251,7 @@ export class GraphRenderer {
         if (changes.weightsChanged) this.updateWeights();
         if (changes.labelsChanged) this.refreshLabels();
       }
+      this.fitIfSettled();
     });
   }
 

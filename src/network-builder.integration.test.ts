@@ -360,3 +360,54 @@ it('excludes non-authors from discovery and connections and skips edited root pa
   expect(graph.getNodes().map(n => n.id)).toEqual(['1', '2']);
   expect(graph.getEdges()).toEqual([{ source: '1', target: '2', weight: 1 }]);
 });
+
+describe('completed network cache', () => {
+  it('restores exact weights with fresh objects and no requests after switching researchers', async () => {
+    vi.mocked(fetchConnectionPublications).mockResolvedValue(response([paper('second', [author(1), author(2)])]));
+    const graph = new GraphState(); const builder = new NetworkBuilder(graph);
+    await builder.build('Author.1', 'Root', 1, vi.fn());
+    expect(graph.getEdges()[0].weight).toBe(2);
+    graph.getNode('2')!.name = 'Mutated'; graph.addOrUpdateEdge('1', '2');
+    vi.mocked(fetchPublications).mockResolvedValue(response([]));
+    await builder.build('Author.9', 'Other', 9, vi.fn());
+    const changed = vi.fn(); graph.on('changed', changed);
+    vi.mocked(fetchPublications).mockClear(); vi.mocked(fetchConnectionPublications).mockClear();
+    const progress = vi.fn();
+    await builder.build('Author.1', 'Root', 1, progress);
+    expect(graph.getNode('2')!.name).toBe('Author 2');
+    expect(graph.getEdges()).toEqual([{ source: '1', target: '2', weight: 2 }]);
+    expect(changed).toHaveBeenCalledOnce();
+    expect(fetchPublications).not.toHaveBeenCalled(); expect(fetchConnectionPublications).not.toHaveBeenCalled();
+    expect(progress.mock.calls.at(-1)?.[0].phase).toBe('done');
+    graph.getNode('2')!.name = 'Again';
+    await builder.build('Author.1', 'Root', 1, vi.fn());
+    expect(graph.getNode('2')!.name).toBe('Author 2');
+  });
+
+  it('expires after ten minutes and evicts the oldest of three networks', async () => {
+    let now = 1000; vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.mocked(fetchPublications).mockResolvedValue(response([]));
+    const builder = new NetworkBuilder(new GraphState());
+    for (const id of [1, 2, 3, 4]) await builder.build(`Author.${id}`, `Author ${id}`, id, vi.fn());
+    await builder.build('Author.2', 'Author 2', 2, vi.fn());
+    expect(fetchPublications).toHaveBeenCalledTimes(4);
+    await builder.build('Author.1', 'Author 1', 1, vi.fn());
+    expect(fetchPublications).toHaveBeenCalledTimes(5);
+    now += 600_000;
+    await builder.build('Author.1', 'Author 1', 1, vi.fn());
+    expect(fetchPublications).toHaveBeenCalledTimes(6);
+  });
+
+  it.each(['identity', 'pagination', 'connections', 'profiles'])('does not cache incomplete %s results', async kind => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    if (kind === 'identity') vi.mocked(fetchPublications).mockResolvedValue(response([paper('unresolved', [author(1), { recid: null, full_name: 'Unknown' }])]));
+    if (kind === 'pagination') vi.mocked(fetchPublications).mockResolvedValue(response([], 1));
+    if (kind === 'connections') vi.mocked(fetchConnectionPublications).mockRejectedValue(new Error('Offline'));
+    if (kind === 'profiles') vi.mocked(fetchAuthorProfiles).mockRejectedValue(new Error('Offline'));
+    const builder = new NetworkBuilder(new GraphState()); const progress = vi.fn();
+    await builder.build('Author.1', 'Root', 1, progress);
+    expect(progress.mock.calls.at(-1)?.[0].phase).toBe('partial');
+    await builder.build('Author.1', 'Root', 1, progress);
+    expect(fetchPublications).toHaveBeenCalledTimes(2);
+  });
+});

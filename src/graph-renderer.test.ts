@@ -295,7 +295,7 @@ it('fits node radii inside a mobile viewport and reserves overlays', () => {
   nodes[0].x = -300; nodes[0].y = -500;
   nodes[1].x = 900; nodes[1].y = 1300;
   renderer.armAutoFit();
-  simulation.on('end')!.call(simulation);
+  simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
   const transform = d3.zoomTransform(document.querySelector('svg')!);
   for (const node of nodes) {
     const [x, y] = transform.apply([node.x!, node.y!]);
@@ -303,7 +303,7 @@ it('fits node radii inside a mobile viewport and reserves overlays', () => {
     expect(y).toBeGreaterThan(164); expect(y).toBeLessThan(606);
   }
   const previous = transform;
-  renderer.armAutoFit(); simulation.on('end')!.call(simulation);
+  renderer.armAutoFit(); simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
   expect(d3.zoomTransform(document.querySelector('svg')!)).toEqual(previous);
 });
 
@@ -312,11 +312,11 @@ it('suppresses automatic fitting after user zoom and resets that choice on clear
   renderer.armAutoFit();
   svg.dispatchEvent(new WheelEvent('wheel', { deltaY: -500, clientX: 200, clientY: 150 }));
   const manual = d3.zoomTransform(svg);
-  simulation.on('end')!.call(simulation);
+  simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
   expect(d3.zoomTransform(svg)).toEqual(manual);
   graph.clear();
   graph.addNode({ id: '1', recid: 1, name: 'Solo', isRoot: true }); flushFrame();
-  renderer.armAutoFit(); simulation.on('end')!.call(simulation);
+  renderer.armAutoFit(); simulation.stop().alpha(0); simulation.on('end')!.call(simulation);
   const fit = d3.zoomTransform(svg);
   expect(Number.isFinite(fit.x) && Number.isFinite(fit.y) && Number.isFinite(fit.k)).toBe(true);
   expect(fit.k).toBeGreaterThan(0);
@@ -361,4 +361,20 @@ it.each(['clear', 'destroy'])('cancels queued rendering on %s', action => {
     graph.addNode({ id: '4', recid: 4, name: 'After destruction', isRoot: false });
     expect(frameCallbacks.size).toBe(0);
   }
+});
+
+it('fits when root fetching finishes after the simulation has already settled', () => {
+  simulation.stop().alpha(0);
+  renderer.armAutoFit();
+  expect(d3.zoomTransform(document.querySelector('svg')!)).not.toEqual(d3.zoomIdentity);
+});
+
+it('fits after queued labels finish on an already settled network', () => {
+  simulation.stop().alpha(0);
+  graph.updateNodeName('2', 'Enriched name');
+  renderer.armAutoFit();
+  expect(d3.zoomTransform(document.querySelector('svg')!)).toEqual(d3.zoomIdentity);
+  flushFrame();
+  expect(d3.zoomTransform(document.querySelector('svg')!)).not.toEqual(d3.zoomIdentity);
+  expect(simulation.alpha()).toBe(0);
 });

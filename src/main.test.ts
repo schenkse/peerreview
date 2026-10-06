@@ -55,7 +55,7 @@ it('returns from the graph to home through the existing accessible button', asyn
   expect(home.querySelector('.home-icon')?.getAttribute('aria-hidden')).toBe('true');
   home.click();
   const builder = vi.mocked(NetworkBuilder).mock.results[0].value;
-  expect(builder.cancel).toHaveBeenCalledTimes(2);
+  expect(builder.cancel).toHaveBeenCalledTimes(1);
   expect((builder as unknown as { graph: GraphState }).graph.nodeCount).toBe(0);
   expect(document.body.dataset.view).toBe('landing');
   expect(document.querySelector('.hero .search-input')).toBe(input);

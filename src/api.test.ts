@@ -84,3 +84,11 @@ it('normalizes contributor roles for root and connection publications', async ()
   }
   expect(enqueue).toHaveBeenCalledTimes(2);
 });
+
+it('caches author responses but refetches publication pages', async () => {
+  const enqueue = vi.spyOn(rateLimiter, 'enqueue').mockImplementation(async () => new Response(JSON.stringify({ hits: { total: 0, hits: [] } })));
+  await searchAuthors('typed author cache'); await searchAuthors('typed author cache');
+  expect(enqueue).toHaveBeenCalledOnce();
+  await fetchPublications('uncached-publications'); await fetchPublications('uncached-publications');
+  expect(enqueue).toHaveBeenCalledTimes(3);
+});

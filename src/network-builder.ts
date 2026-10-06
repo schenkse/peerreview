@@ -5,9 +5,11 @@ import {
   DEFAULT_PAGE_SIZE,
   MAX_RESULT_WINDOW,
   MAX_COAUTHOR_COUNT,
+  CACHE_TTL_MS,
 } from './constants';
+import { TtlCache } from './cache';
 import type { GraphState } from './graph-state';
-import type { InspirePubHit, InspireConnectionPubHit, InspireSearchResponse, NetworkProgress } from './types';
+import type { InspirePubHit, InspireConnectionPubHit, InspireSearchResponse, NetworkProgress, GraphSnapshot } from './types';
 
 export type ProgressCallback = (progress: NetworkProgress) => void;
 
@@ -15,6 +17,7 @@ const ROOT_PHASE_WEIGHT = 0.1;
 interface Coverage { unresolvedEntries: number }
 
 export class NetworkBuilder {
+  private networkCache = new TtlCache<GraphSnapshot>(CACHE_TTL_MS, Date.now, 3);
   private abortController: AbortController | null = null;
 
   constructor(private graphState: GraphState) {}
@@ -33,6 +36,17 @@ export class NetworkBuilder {
     this.cancel();
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
+
+    const cacheKey = `${recid}:${MAX_COAUTHOR_COUNT}`;
+    const cached = this.networkCache.get(cacheKey);
+    if (cached) {
+      this.graphState.restoreSnapshot(cached);
+      onProgress({ phase: 'done', totalCoauthors: cached.nodes.length - 1,
+        completedCoauthors: cached.nodes.length - 1, fraction: 1,
+        message: `Done. ${this.graphState.nodeCount} authors, ${this.graphState.edgeCount} connections.` });
+      return;
+    }
+    this.graphState.clear();
 
     try {
       // Discover the initial network one publication page at a time.
@@ -79,7 +93,7 @@ export class NetworkBuilder {
         phase: 'fetching-coauthors', totalCoauthors: total, completedCoauthors: 0,
         fraction: ROOT_PHASE_WEIGHT, message: `Fetching profiles for ${total} co-authors...`,
       });
-      await this.enrichAuthorNames(coauthorRecids, coauthorBais, signal);
+      const profilesComplete = await this.enrichAuthorNames(coauthorRecids, coauthorBais, signal);
       signal.throwIfAborted();
 
       const baiChunks = chunk(
@@ -132,9 +146,11 @@ export class NetworkBuilder {
       signal.throwIfAborted();
 
       const notes: string[] = [];
+      if (!profilesComplete) notes.push("Author profiles are incomplete.");
       if (coverage.unresolvedEntries) notes.push(`${coverage.unresolvedEntries} author ${coverage.unresolvedEntries === 1 ? 'entry' : 'entries'} could not be resolved across unique publications.`);
       if (!publications.complete) notes.push(`Root publications are incomplete (${publications.count}/${publications.total} retrieved).`);
       if (failures > 0) notes.push(`Connections for ${failures} co-author${failures === 1 ? '' : 's'} are incomplete.`);
+      if (!notes.length) this.networkCache.set(cacheKey, this.graphState.exportSnapshot());
       onProgress({
         phase: notes.length ? 'partial' : 'done',
         totalCoauthors: total,
@@ -262,8 +278,9 @@ export class NetworkBuilder {
     recids: number[],
     coauthorBais: Map<string, string>,
     signal: AbortSignal,
-  ): Promise<void> {
-    if (recids.length === 0) return;
+  ): Promise<boolean> {
+    if (recids.length === 0) return true;
+    let complete = true;
     const chunks = chunk(recids, AUTHOR_PROFILE_CHUNK_SIZE);
 
     await Promise.allSettled(
@@ -297,10 +314,12 @@ export class NetworkBuilder {
           }
         } catch (err) {
           if ((err as Error).name === 'AbortError') return;
+          complete = false;
           console.warn(`Failed to enrich names for ${chunkRecids.length} authors:`, err);
         }
       }),
     );
+    return complete;
   }
 }
 

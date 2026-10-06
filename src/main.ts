@@ -38,8 +38,6 @@ function showLanding(): void {
 
 new SearchUI(searchContainer, async (bai, name, recid) => {
   showGraphView();
-  networkBuilder.cancel();
-  graphState.clear();
   progress.show();
   await networkBuilder.build(bai, name, recid, (p) => {
     progress.update(p);

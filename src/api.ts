@@ -10,12 +10,10 @@ export class ApiError extends Error {
   }
 }
 
-const responseCache = new TtlCache<unknown>();
+const authorResponseCache = new TtlCache<InspireSearchResponse<InspireAuthorHit>>();
 
 async function request<T>(url: string, signal?: AbortSignal, priority: RequestPriority = 'background'): Promise<InspireSearchResponse<T>> {
   signal?.throwIfAborted();
-  const cached = responseCache.get(url) as InspireSearchResponse<T> | undefined;
-  if (cached) return cached;
 
   const res = await rateLimiter.enqueue(url, signal, priority);
   if (!res.ok) {
@@ -23,8 +21,16 @@ async function request<T>(url: string, signal?: AbortSignal, priority: RequestPr
   }
   const data = (await res.json()) as InspireSearchResponse<T>;
   signal?.throwIfAborted();
-  responseCache.set(url, data);
   return data;
+}
+
+async function requestAuthors(url: string, signal?: AbortSignal, priority: RequestPriority = 'background'): Promise<InspireSearchResponse<InspireAuthorHit>> {
+  signal?.throwIfAborted();
+  const cached = authorResponseCache.get(url);
+  if (cached) return cached;
+  const response = await request<InspireAuthorHit>(url, signal, priority);
+  authorResponseCache.set(url, response);
+  return response;
 }
 
 export function searchAuthors(
@@ -33,7 +39,7 @@ export function searchAuthors(
 ): Promise<InspireSearchResponse<InspireAuthorHit>> {
   const params = new URLSearchParams({ q: query, size: '10',
     fields: 'name,ids,positions,control_number,stub' });
-  return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal, 'interactive');
+  return requestAuthors(`${INSPIRE_BASE_URL}/authors?${params}`, signal, 'interactive');
 }
 
 export async function fetchPublications(
@@ -82,7 +88,7 @@ export function fetchAuthorProfiles(
     size: String(DEFAULT_PAGE_SIZE),
     fields: 'control_number,name,ids',
   });
-  return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
+  return requestAuthors(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
 }
 
 interface RawPublication {

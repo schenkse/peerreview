@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { GraphState } from './graph-state';
 import type { AuthorNode } from './types';
 
@@ -147,4 +147,21 @@ it('combines topology, weights, and labels in nested batches', () => {
   graph.endBatch();
   graph.endBatch();
   expect(changed).toEqual([{ topologyChanged: true, weightsChanged: true, labelsChanged: true }]);
+});
+
+it('isolates snapshots on both capture and restore and preserves adjacency and weights', () => {
+  const graph = new GraphState();
+  graph.addNode({ id: '1', recid: 1, name: 'Root', isRoot: true });
+  graph.addNode({ id: '2', recid: 2, name: 'Other', isRoot: false });
+  graph.addOrUpdateEdge('1', '2', 7);
+  const snapshot = graph.exportSnapshot();
+  graph.getNode('1')!.name = 'Changed'; graph.addOrUpdateEdge('1', '2');
+  expect(snapshot.nodes[0].name).toBe('Root'); expect(snapshot.edges[0].weight).toBe(7);
+  const changed = vi.fn(); graph.on('changed', changed);
+  graph.restoreSnapshot(snapshot);
+  expect(changed).toHaveBeenCalledOnce();
+  expect([...graph.getNeighborIds('1')]).toEqual(['2']);
+  expect(graph.getEdges()[0].weight).toBe(7);
+  graph.getNode('1')!.name = 'Changed again'; graph.addOrUpdateEdge('1', '2');
+  expect(snapshot.nodes[0].name).toBe('Root'); expect(snapshot.edges[0].weight).toBe(7);
 });

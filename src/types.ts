@@ -59,6 +59,11 @@ export interface CoauthorEdge {
   weight: number;
 }
 
+export interface GraphSnapshot {
+  nodes: AuthorNode[];
+  edges: CoauthorEdge[];
+}
+
 // --- Progress reporting ---
 
 export type NetworkPhase =

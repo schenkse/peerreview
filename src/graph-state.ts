@@ -1,4 +1,4 @@
-import type { AuthorNode, CoauthorEdge, GraphChange, GraphEvent } from './types';
+import type { AuthorNode, CoauthorEdge, GraphChange, GraphEvent, GraphSnapshot } from './types';
 
 const unchanged = (): GraphChange => ({ topologyChanged: false, weightsChanged: false, labelsChanged: false });
 
@@ -59,20 +59,20 @@ export class GraphState {
     this.emitOrBatch('labelsChanged');
   }
 
-  addOrUpdateEdge(sourceId: string, targetId: string): void {
+  addOrUpdateEdge(sourceId: string, targetId: string, weight = 1): void {
     if (sourceId === targetId) return; // no self-loops
 
     const key = this.edgeKey(sourceId, targetId);
     const existing = this.edges.get(key);
 
     if (existing) {
-      existing.weight++;
+      existing.weight += weight;
       this.emitOrBatch('weightsChanged');
     } else {
       const edge: CoauthorEdge = {
         source: sourceId,
         target: targetId,
-        weight: 1,
+        weight,
       };
       this.edges.set(key, edge);
 
@@ -82,6 +82,25 @@ export class GraphState {
       this.adjacency.get(targetId)!.add(sourceId);
 
       this.emitOrBatch('topologyChanged');
+    }
+  }
+
+  exportSnapshot(): GraphSnapshot {
+    return {
+      nodes: this.getNodes().map(({ id, recid, name, bai, isRoot }) => ({ id, recid, name, bai, isRoot })),
+      edges: this.getEdges().map(({ source, target, weight }) => ({ source, target, weight })),
+    };
+  }
+
+  // Replace the network with fresh domain objects, notifying listeners once after insertion.
+  restoreSnapshot(snapshot: GraphSnapshot): void {
+    this.clear();
+    this.beginBatch();
+    try {
+      for (const node of snapshot.nodes) this.addNode({ ...node });
+      for (const edge of snapshot.edges) this.addOrUpdateEdge(edge.source, edge.target, edge.weight);
+    } finally {
+      this.endBatch();
     }
   }
 
