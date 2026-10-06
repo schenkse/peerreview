@@ -11,6 +11,7 @@ import type { InspirePubHit, InspireConnectionPubHit, InspireSearchResponse, Net
 export type ProgressCallback = (progress: NetworkProgress) => void;
 
 const ROOT_PHASE_WEIGHT = 0.1;
+interface Coverage { unresolvedEntries: number }
 
 export class NetworkBuilder {
   private abortController: AbortController | null = null;
@@ -53,10 +54,11 @@ export class NetworkBuilder {
 
       const coauthorBais = new Map<string, string>(); // recid -> BAI
       const seenPapers = new Set<string>();
+      const coverage = { unresolvedEntries: 0 };
       const publications = await this.fetchPublicationPages(
         page => fetchPublications(bai, page, signal),
         signal,
-        pubs => this.addRootPublications(pubs, recid, coauthorBais, seenPapers),
+        pubs => this.addRootPublications(pubs, recid, coauthorBais, seenPapers, coverage),
         (completedPages, totalPages) => {
           onProgress({
             phase: 'fetching-root',
@@ -102,7 +104,7 @@ export class NetworkBuilder {
           if (signal.aborted) return;
 
           try {
-            const failed = await this.fetchCoauthorConnections(chunkBais, signal, seenPapers);
+            const failed = await this.fetchCoauthorConnections(chunkBais, signal, seenPapers, coverage);
             failures += failed;
           } catch (err) {
             if (signal.aborted) return;
@@ -129,6 +131,7 @@ export class NetworkBuilder {
       signal.throwIfAborted();
 
       const notes: string[] = [];
+      if (coverage.unresolvedEntries) notes.push(`${coverage.unresolvedEntries} author ${coverage.unresolvedEntries === 1 ? 'entry' : 'entries'} could not be resolved across unique publications.`);
       if (!publications.complete) notes.push(`Root publications are incomplete (${publications.count}/${publications.total} retrieved).`);
       if (failures > 0) notes.push(`Connections for ${failures} co-author${failures === 1 ? '' : 's'} are incomplete.`);
       onProgress({
@@ -151,7 +154,7 @@ export class NetworkBuilder {
   }
 
   private addRootPublications(
-    pubs: InspirePubHit[], recid: number, coauthorBais: Map<string, string>, seenPapers: Set<string>,
+    pubs: InspirePubHit[], recid: number, coauthorBais: Map<string, string>, seenPapers: Set<string>, coverage: Coverage,
   ): void {
     this.graphState.beginBatch();
     try {
@@ -166,7 +169,7 @@ export class NetworkBuilder {
         }
       }
       // These papers already establish connections between the root's coauthors.
-      this.addCrossEdges(pubs, seenPapers, String(recid));
+      this.addCrossEdges(pubs, seenPapers, coverage, String(recid));
     } finally {
       this.graphState.endBatch();
     }
@@ -197,14 +200,14 @@ export class NetworkBuilder {
   }
 
   /** Split only result-window overflows and query-size failures. */
-  private async fetchCoauthorConnections(bais: string[], signal: AbortSignal, seenPapers: Set<string>): Promise<number> {
+  private async fetchCoauthorConnections(bais: string[], signal: AbortSignal, seenPapers: Set<string>, coverage: Coverage): Promise<number> {
     signal.throwIfAborted();
     try {
       const result = await this.fetchPublicationPages(
         page => bais.length === 1
           ? fetchConnectionPublications(bais[0], page, signal)
           : fetchConnectionPublicationsBatch(bais, page, signal),
-        signal, pubs => this.addCrossEdges(pubs, seenPapers), undefined, bais.length > 1,
+        signal, pubs => this.addCrossEdges(pubs, seenPapers, coverage), undefined, bais.length > 1,
       );
       signal.throwIfAborted();
       if (result.complete || bais.length === 1 || result.total <= MAX_RESULT_WINDOW) {
@@ -219,18 +222,19 @@ export class NetworkBuilder {
     }
     const middle = Math.ceil(bais.length / 2);
     const failures = await Promise.all([
-      this.fetchCoauthorConnections(bais.slice(0, middle), signal, seenPapers),
-      this.fetchCoauthorConnections(bais.slice(middle), signal, seenPapers),
+      this.fetchCoauthorConnections(bais.slice(0, middle), signal, seenPapers, coverage),
+      this.fetchCoauthorConnections(bais.slice(middle), signal, seenPapers, coverage),
     ]);
     return failures[0] + failures[1];
   }
 
-  private addCrossEdges(pubs: InspireConnectionPubHit[], seenPapers: Set<string>, rootId?: string): void {
+  private addCrossEdges(pubs: InspireConnectionPubHit[], seenPapers: Set<string>, coverage: Coverage = { unresolvedEntries: 0 }, rootId?: string): void {
     this.graphState.beginBatch();
     try {
       for (const pub of pubs) {
         if (seenPapers.has(pub.id)) continue;
         seenPapers.add(pub.id);
+        coverage.unresolvedEntries += pub.metadata.authors.filter(author => !author.recid).length;
         const authorIds = new Set(pub.metadata.authors
           .filter(author => author.recid && this.graphState.hasNode(String(author.recid)))
           .map(author => String(author.recid)));

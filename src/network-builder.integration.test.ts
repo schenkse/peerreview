@@ -337,3 +337,12 @@ it('builds connections from record-ID-only publication metadata', async () => {
   await new NetworkBuilder(graph).build('Author.1', 'Root', 1, vi.fn());
   expect(graph.getEdges().find(edge => edge.source === '2' && edge.target === '3')?.weight).toBe(2);
 });
+
+it('counts unresolved entries once per unique publication', async () => {
+  const pub = paper('unresolved', [author(1), author(2), { recid: null, full_name: 'Unknown' }]);
+  vi.mocked(fetchPublications).mockResolvedValue(response([pub, pub]));
+  vi.mocked(fetchConnectionPublications).mockResolvedValue(response([pub]));
+  const progress = vi.fn();
+  await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
+  expect(progress.mock.calls.at(-1)?.[0].message).toContain('1 author entry could not be resolved across unique publications');
+});

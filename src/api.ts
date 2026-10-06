@@ -36,7 +36,7 @@ export function searchAuthors(
   return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
 }
 
-export function fetchPublications(
+export async function fetchPublications(
   bai: string,
   page = 1,
   signal?: AbortSignal,
@@ -45,9 +45,9 @@ export function fetchPublications(
     q: `a ${bai} and ac 1->${MAX_COAUTHOR_COUNT}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'authors.recid,authors.full_name,authors.ids',
+    fields: 'authors.record,authors.recid,authors.full_name,authors.ids',
   });
-  return request<InspirePubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
+  return normalizePublications(await request<RawPublication>(`${INSPIRE_BASE_URL}/literature?${params}`, signal));
 }
 
 export function fetchConnectionPublications(
@@ -58,7 +58,7 @@ export function fetchConnectionPublications(
   return fetchConnectionPublicationsBatch([bai], page, signal);
 }
 
-export function fetchConnectionPublicationsBatch(
+export async function fetchConnectionPublicationsBatch(
   bais: string[],
   page = 1,
   signal?: AbortSignal,
@@ -68,9 +68,9 @@ export function fetchConnectionPublicationsBatch(
     q: `(${disjunction}) and ac 1->${MAX_COAUTHOR_COUNT}`,
     size: String(DEFAULT_PAGE_SIZE),
     page: String(page),
-    fields: 'authors.recid',
+    fields: 'authors.record,authors.recid',
   });
-  return request<InspireConnectionPubHit>(`${INSPIRE_BASE_URL}/literature?${params}`, signal);
+  return normalizePublications(await request<RawPublication>(`${INSPIRE_BASE_URL}/literature?${params}`, signal));
 }
 
 export function fetchAuthorProfiles(
@@ -83,4 +83,30 @@ export function fetchAuthorProfiles(
     fields: 'control_number,name,ids',
   });
   return request<InspireAuthorHit>(`${INSPIRE_BASE_URL}/authors?${params}`, signal);
+}
+
+interface RawPublication {
+  id: string;
+  metadata: { authors?: {
+    record?: { $ref?: string };
+    recid?: number;
+    full_name?: string;
+    ids?: InspirePubHit['metadata']['authors'][number]['ids'];
+  }[] };
+}
+
+// Literature uses record references; older responses sometimes include recid.
+function normalizePublications(response: InspireSearchResponse<RawPublication>): InspireSearchResponse<InspirePubHit> {
+  return { ...response, hits: { ...response.hits, hits: response.hits.hits.map(pub => ({
+    id: pub.id,
+    metadata: { authors: (pub.metadata.authors ?? []).map(author => {
+      const match = typeof author.record?.$ref === 'string'
+        ? /^https?:\/\/inspirehep\.net\/api\/authors\/([1-9]\d*)\/?$/.exec(author.record.$ref)
+        : null;
+      const referenceId = match ? Number(match[1]) : NaN;
+      const recid = Number.isSafeInteger(referenceId) ? referenceId
+        : Number.isSafeInteger(author.recid) && author.recid! > 0 ? author.recid! : null;
+      return { recid, full_name: author.full_name ?? '', ids: author.ids };
+    }) },
+  })) } };
 }

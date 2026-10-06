@@ -20,7 +20,7 @@ export interface InspireAuthorHit {
 
 export interface InspirePubAuthor {
   full_name: string;
-  recid: number;
+  recid: number | null;
   ids?: InspireAuthorId[];
 }
 
@@ -33,7 +33,7 @@ export interface InspirePubHit {
 
 export interface InspireConnectionPubHit {
   id: string;
-  metadata: { authors: { recid: number }[] };
+  metadata: { authors: { recid: number | null }[] };
 }
 
 export interface InspireSearchResponse<T> {

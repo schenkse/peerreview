@@ -52,9 +52,22 @@ it('requests only the fields each operation consumes', async () => {
   await fetchAuthorProfiles([42]);
   const urls = enqueue.mock.calls.map(([url]) => new URL(url));
   expect(urls.map(url => url.searchParams.get('fields'))).toEqual([
-    'name,ids,positions,control_number,stub', 'authors.recid,authors.full_name,authors.ids',
-    'authors.recid', 'authors.recid', 'control_number,name,ids',
+    'name,ids,positions,control_number,stub', 'authors.record,authors.recid,authors.full_name,authors.ids',
+    'authors.record,authors.recid', 'authors.record,authors.recid', 'control_number,name,ids',
   ]);
   expect(urls.slice(1).map(url => url.searchParams.get('size'))).toEqual(['500', '500', '500', '500']);
   expect(urls[3].searchParams.get('q')).toBe('(a Batch.one or a Batch.two) and ac 1->10');
+});
+
+ it('normalizes record references before legacy IDs and reports missing identities', async () => {
+  vi.spyOn(rateLimiter, 'enqueue').mockResolvedValue(new Response(JSON.stringify({ hits: { total: 1, hits: [{ id: 'identity', metadata: { authors: [
+    { record: { $ref: 'https://inspirehep.net/api/authors/42' } },
+    { recid: 7 },
+    { recid: 8, record: { $ref: 'http://inspirehep.net/api/authors/9' } },
+    { recid: -1 }, { recid: 1.5 }, {},
+    { record: { $ref: 'https://inspirehepXnet/api/authors/10' } },
+    { recid: 11, record: { $ref: 'https://inspirehep.net/api/literature/12' } },
+  ] } }] } })));
+  const response = await fetchPublications('identity-test');
+  expect(response.hits.hits[0].metadata.authors.map(a => a.recid)).toEqual([42, 7, 9, null, null, null, null, 11]);
 });
