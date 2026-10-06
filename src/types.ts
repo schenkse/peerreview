@@ -66,6 +66,7 @@ export interface CoauthorEdge extends SimulationLinkDatum<AuthorNode> {
 export type NetworkPhase =
   | 'fetching-root'
   | 'fetching-coauthors'
+  | 'partial'
   | 'done'
   | 'error';
 

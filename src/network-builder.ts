@@ -136,7 +136,7 @@ export class NetworkBuilder {
       if (!publications.complete) notes.push(`Root publications are incomplete (${publications.count}/${publications.total} retrieved).`);
       if (failures > 0) notes.push(`Connections for ${failures} co-author${failures === 1 ? '' : 's'} are incomplete.`);
       onProgress({
-        phase: 'done',
+        phase: notes.length ? 'partial' : 'done',
         totalCoauthors: total,
         completedCoauthors: total,
         fraction: 1,

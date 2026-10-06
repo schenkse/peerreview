@@ -225,7 +225,7 @@ describe('NetworkBuilder query failures', () => {
       await new NetworkBuilder(new GraphState()).build('Author.1', 'Root', 1, progress);
       expect(fetchConnectionPublicationsBatch).toHaveBeenCalledOnce();
       expect(fetchPublications).toHaveBeenCalledOnce();
-      expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({ phase: 'done' });
+      expect(progress.mock.calls.at(-1)?.[0]).toMatchObject({ phase: 'partial' });
       expect(progress.mock.calls.at(-1)?.[0].message).toContain('Connections for 2 co-authors are incomplete');
     },
   );
@@ -284,7 +284,7 @@ it('retains valid profile fields and balances batches after malformed profiles',
   changed.mockClear();
   graph.updateNodeName('2', 'After build');
   expect(changed).toHaveBeenCalledOnce();
-  expect(progress.mock.calls.at(-1)?.[0].phase).toBe('done');
+  expect(progress.mock.calls.at(-1)?.[0].phase).toBe('partial');
 });
 
 

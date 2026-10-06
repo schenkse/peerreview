@@ -39,7 +39,7 @@ export class ProgressIndicator {
       this.bar.classList.add('visible');
       const f = Math.max(0, Math.min(1, progress.fraction ?? 0));
       this.fill.style.width = `${f * 100}%`;
-    } else if (progress.phase === 'done' || progress.phase === 'error') {
+    } else if (progress.phase === 'done' || progress.phase === 'partial' || progress.phase === 'error') {
       // The meter fills up, then fades out (see .progress-bar in style.css).
       this.fill.style.width = '100%';
       this.bar.classList.remove('visible');

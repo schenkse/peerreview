@@ -39,3 +39,16 @@ describe('ProgressIndicator timers', () => {
     expect(container.textContent).toBe('error');
   });
 });
+
+it.each(['partial', 'error'] as const)('keeps %s visible until explicitly hidden or replaced', async phase => {
+  vi.useFakeTimers();
+  const container = document.createElement('div');
+  const indicator = new ProgressIndicator(container);
+  indicator.update({ phase, message: 'Incomplete coverage', totalCoauthors: 0, completedCoauthors: 0 });
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(container.classList.contains('visible')).toBe(true);
+  expect(container.textContent).toBe('Incomplete coverage');
+  indicator.update({ phase: 'done', message: 'Done', totalCoauthors: 0, completedCoauthors: 0 });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(container.classList.contains('visible')).toBe(false);
+});
